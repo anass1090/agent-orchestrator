@@ -67,6 +67,7 @@ export default defineConfig({
             '.github/**',
             'composer.json',
             'resources/js/components/ui/*',
+            'resources/prompts/**',
             'resources/views/mail/*',
         ],
         sortTailwindcss: {

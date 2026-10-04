@@ -1,0 +1,62 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * Stand-in for the claude CLI. Behaviour per invocation comes from the JSON
+ * scenario in $FAKE_CLAUDE_SCENARIO: {"calls": [{"write": {...}, "exit": 0,
+ * "subtype": "success", "stderr": "", "no_result": false}, ...]}.
+ * Every invocation is logged to calls.jsonl next to the scenario file.
+ */
+
+$scenarioPath = getenv('FAKE_CLAUDE_SCENARIO');
+$scenario = json_decode(file_get_contents($scenarioPath), true);
+$logPath = dirname($scenarioPath).'/calls.jsonl';
+$index = is_file($logPath) ? count(file($logPath)) : 0;
+$call = $scenario['calls'][$index] ?? ['exit' => 1, 'stderr' => 'fake-claude: no scenario for call '.$index];
+
+file_put_contents($logPath, json_encode([
+    'args' => array_slice($argv, 1),
+    'cwd' => getcwd(),
+    'env' => [
+        'ANTHROPIC_API_KEY' => getenv('ANTHROPIC_API_KEY'),
+        'DB_DATABASE' => getenv('DB_DATABASE'),
+        'DB_CONNECTION' => getenv('DB_CONNECTION'),
+    ],
+])."\n", FILE_APPEND);
+
+$session = 'session-'.($index + 1);
+$emit = fn (array $message) => print(json_encode($message)."\n");
+
+if (($call['exit'] ?? 0) !== 0 && empty($call['subtype'])) {
+    fwrite(STDERR, $call['stderr'] ?? 'API Error: 429 rate_limit_error');
+    exit($call['exit']);
+}
+
+$emit(['type' => 'system', 'subtype' => 'init', 'session_id' => $session, 'model' => 'fake-model', 'tools' => ['Read', 'Write', 'Bash'], 'cwd' => getcwd()]);
+
+foreach ($call['write'] ?? [] as $file => $contents) {
+    $id = 'toolu_'.md5($file.$index);
+    $emit(['type' => 'assistant', 'session_id' => $session, 'message' => ['id' => 'msg_'.$index, 'content' => [
+        ['type' => 'tool_use', 'id' => $id, 'name' => 'Write', 'input' => ['file_path' => getcwd().'/'.$file, 'content' => $contents]],
+    ]]]);
+    @mkdir(dirname(getcwd().'/'.$file), 0777, true);
+    file_put_contents(getcwd().'/'.$file, $contents);
+    $emit(['type' => 'user', 'session_id' => $session, 'message' => ['role' => 'user', 'content' => [
+        ['type' => 'tool_result', 'tool_use_id' => $id, 'content' => 'File created successfully'],
+    ]], 'tool_use_result' => ['type' => 'create', 'content' => $contents]]);
+}
+
+$emit(['type' => 'assistant', 'session_id' => $session, 'message' => ['id' => 'msg_end_'.$index, 'content' => [
+    ['type' => 'text', 'text' => 'Klaar.'],
+]]]);
+
+if (empty($call['no_result'])) {
+    $subtype = $call['subtype'] ?? 'success';
+    $emit([
+        'type' => 'result', 'subtype' => $subtype, 'is_error' => $subtype !== 'success', 'session_id' => $session,
+        'num_turns' => 3, 'duration_ms' => 1200, 'total_cost_usd' => 0.01, 'result' => $subtype === 'success' ? 'Klaar.' : 'Limit reached',
+        'usage' => ['input_tokens' => 100, 'output_tokens' => 50, 'cache_creation_input_tokens' => 10, 'cache_read_input_tokens' => 1000],
+    ]);
+}
+
+exit($call['exit'] ?? 0);

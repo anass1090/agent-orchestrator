@@ -1,8 +1,16 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="nl">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        {{-- Follow the system light/dark preference. --}}
+        <script>
+            const dark = window.matchMedia('(prefers-color-scheme: dark)');
+            const apply = () => document.documentElement.classList.toggle('dark', dark.matches);
+            apply();
+            dark.addEventListener('change', apply);
+        </script>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
