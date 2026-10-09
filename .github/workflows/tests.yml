@@ -17,9 +17,9 @@ jobs:
       postgres:
         image: postgres:18
         env:
-          POSTGRES_USER: root
+          POSTGRES_USER: sail
           POSTGRES_PASSWORD: password
-          POSTGRES_DB: pipeline
+          POSTGRES_DB: testing
         ports:
           - 5432:5432
         options: >-
@@ -29,7 +29,8 @@ jobs:
           --health-retries 10
 
     env:
-      DB_PASSWORD: password
+      DB_HOST: 127.0.0.1
+      DB_DATABASE: testing
 
     steps:
       - name: Checkout code
