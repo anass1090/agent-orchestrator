@@ -12,9 +12,14 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Throwable;
 
-#[Signature('pipeline:phase
-    {run : Het run-id}
-    {phase : setup, plan, build, checks, fixloop, commit, push, cleanup of finish}')]
+#[
+    Signature(
+        '
+            pipeline:phase
+            {run : Het run-id}
+            {phase : setup, plan, build, checks, fixloop, commit, push, cleanup of finish}
+        '
+    )]
 #[Description('Voer één fase van een bestaande run uit, om te debuggen')]
 class PipelinePhaseCommand extends Command
 {
@@ -26,34 +31,64 @@ class PipelinePhaseCommand extends Command
      */
     public function handle(Pipeline $pipeline, EventRecorder $recorder): int
     {
-        $run = Run::with('project')->find($this->argument('run'));
+        $run = $this->resolveRun();
         $phase = $this->argument('phase');
 
-        if ($run === null) {
-            $this->error("Run [{$this->argument('run')}] bestaat niet.");
-
-            return self::FAILURE;
-        }
-
-        if (! in_array($phase, $this->phases, true)) {
-            $this->error('Onbekende fase. Kies uit: '.implode(', ', $this->phases));
-
-            return self::FAILURE;
-        }
-
-        $needsWorktree = ! in_array($phase, ['setup', 'cleanup', 'finish'], true);
-
-        if ($needsWorktree && ($run->worktree_path === null || ! is_dir($run->worktree_path))) {
-            $this->error('Deze run heeft geen worktree. Draai eerst: php artisan pipeline:phase '.$run->id.' setup');
-
+        if ($run === null || ! $this->validatePhase($phase) || ! $this->ensureWorktree($run, $phase)) {
             return self::FAILURE;
         }
 
         $recorder->setReporter(new ConsoleReporter($this->output));
         $this->trap([SIGINT, SIGTERM], fn () => $pipeline->abort());
 
-        $run->forceFill(['status' => RunStatus::Running, 'started_at' => $run->started_at ?? now(), 'pid' => getmypid()])->save();
+        $run->forceFill(
+            ['status' => RunStatus::Running, 'started_at' => $run->started_at ?? now(), 'pid' => getmypid()])->save();
 
+        $this->runPhase($pipeline, $run, $phase);
+
+        $this->newLine();
+        $this->call('pipeline:show', ['run' => $run->id, '--no-events' => true]);
+
+        return self::SUCCESS;
+    }
+
+    protected function resolveRun(): ?Run
+    {
+        $run = Run::with('project')->find($this->argument('run'));
+
+        if ($run === null) {
+            $this->error("Run [{$this->argument('run')}] bestaat niet.");
+        }
+
+        return $run;
+    }
+
+    protected function validatePhase(string $phase): bool
+    {
+        if (in_array($phase, $this->phases, true)) {
+            return true;
+        }
+
+        $this->error('Onbekende fase. Kies uit: '.implode(', ', $this->phases));
+
+        return false;
+    }
+
+    protected function ensureWorktree(Run $run, string $phase): bool
+    {
+        $needsWorktree = ! in_array($phase, ['setup', 'cleanup', 'finish'], true);
+
+        if (! $needsWorktree || ($run->worktree_path !== null && is_dir($run->worktree_path))) {
+            return true;
+        }
+
+        $this->error('Deze run heeft geen worktree. Draai eerst: php artisan pipeline:phase '.$run->id.' setup');
+
+        return false;
+    }
+
+    protected function runPhase(Pipeline $pipeline, Run $run, string $phase): void
+    {
         try {
             match ($phase) {
                 'setup' => $pipeline->setup($run),
@@ -75,11 +110,6 @@ class PipelinePhaseCommand extends Command
 
             $pipeline->refreshTotals($run);
         }
-
-        $this->newLine();
-        $this->call('pipeline:show', ['run' => $run->id, '--no-events' => true]);
-
-        return self::SUCCESS;
     }
 
     protected function reportChecks(Pipeline $pipeline, Run $run): void

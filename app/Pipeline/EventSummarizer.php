@@ -130,28 +130,32 @@ class EventSummarizer
             return [new StreamEvent('user.text', null, $nested.$this->line($content), $meta + ['text' => $content])];
         }
 
-        $events = [];
+        return array_values(array_map(
+            fn (array $block) => $this->userBlockEvent($block, $meta, $nested),
+            (array) $content,
+        ));
+    }
 
-        foreach ((array) $content as $block) {
-            if (($block['type'] ?? null) !== 'tool_result') {
-                $events[] = new StreamEvent('user.'.($block['type'] ?? 'unknown'), null, null, $meta + ['block' => $block]);
-
-                continue;
-            }
-
-            $tool = $this->toolNames[(string) ($block['tool_use_id'] ?? '')] ?? null;
-            $isError = (bool) ($block['is_error'] ?? false);
-            $text = $this->resultText($block['content'] ?? '');
-
-            $events[] = new StreamEvent(
-                'tool_result',
-                $tool,
-                $nested.($isError ? 'error: ' : 'ok: ').$this->line($text),
-                $meta + ['block' => $block],
-            );
+    /**
+     * @param  array<string, mixed>  $block
+     * @param  array<string, mixed>  $meta
+     */
+    protected function userBlockEvent(array $block, array $meta, string $nested): StreamEvent
+    {
+        if (($block['type'] ?? null) !== 'tool_result') {
+            return new StreamEvent('user.'.($block['type'] ?? 'unknown'), null, null, $meta + ['block' => $block]);
         }
 
-        return $events;
+        $tool = $this->toolNames[(string) ($block['tool_use_id'] ?? '')] ?? null;
+        $isError = (bool) ($block['is_error'] ?? false);
+        $text = $this->resultText($block['content'] ?? '');
+
+        return new StreamEvent(
+            'tool_result',
+            $tool,
+            $nested.($isError ? 'error: ' : 'ok: ').$this->line($text),
+            $meta + ['block' => $block],
+        );
     }
 
     /**

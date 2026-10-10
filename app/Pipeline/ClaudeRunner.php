@@ -5,6 +5,7 @@ namespace App\Pipeline;
 use App\Enums\Phase;
 use App\Models\Run;
 use App\Models\RunStep;
+use Closure;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 
@@ -23,6 +24,42 @@ class ClaudeRunner
     {
         $parser = new StreamJsonParser;
         $summarizer = new EventSummarizer((string) $run->worktree_path);
+        $raw = $this->openRawLog($run, $phase, $step);
+
+        $sessionId = null;
+        $model = null;
+        $resultEvent = null;
+        $stderr = '';
+
+        $handle = $this->messageHandler($run, $step, $phase, $summarizer, $sessionId, $model, $resultEvent);
+
+        try {
+            $result = $this->commands->run(
+                $this->command($prompt, $systemPrompt, $resumeSessionId),
+                (string) $run->worktree_path,
+                (int) config("pipeline.timeouts.{$phase->value}"),
+                $run->project,
+                $this->outputHandler($parser, $handle, $raw, $stderr),
+            );
+
+            foreach ($parser->flush() as $message) {
+                $handle($message);
+            }
+        } finally {
+            fclose($raw);
+            $this->persistStderr($run, $phase, $step, $stderr);
+        }
+
+        return new ClaudeResult($result->exitCode() ?? -1, $sessionId, $model, $resultEvent, $stderr);
+    }
+
+    /**
+     * Open the file every raw stream-json line is appended to, for debugging.
+     *
+     * @return resource
+     */
+    protected function openRawLog(Run $run, Phase $phase, RunStep $step)
+    {
         $rawPath = $run->storagePath("streams/{$phase->value}-{$step->attempt}.jsonl");
         File::ensureDirectoryExists(dirname($rawPath));
         $raw = fopen($rawPath, 'ab');
@@ -31,12 +68,25 @@ class ClaudeRunner
             throw new RuntimeException("Cannot open [{$rawPath}] for writing.");
         }
 
-        $sessionId = null;
-        $model = null;
-        $resultEvent = null;
-        $stderr = '';
+        return $raw;
+    }
 
-        $handle = function (array $message) use ($run, $step, $phase, $summarizer, &$sessionId, &$model, &$resultEvent): void {
+    protected function persistStderr(Run $run, Phase $phase, RunStep $step, string $stderr): void
+    {
+        if ($stderr !== '') {
+            File::put($run->storagePath("streams/{$phase->value}-{$step->attempt}.stderr"), $stderr);
+        }
+    }
+
+    /**
+     * Builds the callback that turns one parsed stream-json message into
+     * recorded events, remembering the session metadata as it goes by.
+     *
+     * @param  array<string, mixed>|null  $resultEvent
+     */
+    protected function messageHandler(Run $run, RunStep $step, Phase $phase, EventSummarizer $summarizer, ?string &$sessionId, ?string &$model, ?array &$resultEvent): Closure
+    {
+        return function (array $message) use ($run, $step, $phase, $summarizer, &$sessionId, &$model, &$resultEvent): void {
             if (($message['type'] ?? null) === 'system' && ($message['subtype'] ?? null) === 'init') {
                 $sessionId = $message['session_id'] ?? null;
                 $model = $message['model'] ?? null;
@@ -51,40 +101,29 @@ class ClaudeRunner
                 $this->recorder->record($run, $phase, $step, $event->type, $event->tool, $event->summary, $event->payload);
             }
         };
+    }
 
-        try {
-            $result = $this->commands->run(
-                $this->command($prompt, $systemPrompt, $resumeSessionId),
-                (string) $run->worktree_path,
-                (int) config("pipeline.timeouts.{$phase->value}"),
-                $run->project,
-                function (string $type, string $output) use ($parser, $handle, $raw, &$stderr): void {
-                    if ($type === 'err') {
-                        $stderr .= $output;
+    /**
+     * Builds the callback that routes a subprocess output chunk: stderr is
+     * buffered, stdout is appended to the raw log and fed to the parser.
+     *
+     * @param  resource  $raw
+     */
+    protected function outputHandler(StreamJsonParser $parser, Closure $handle, $raw, string &$stderr): Closure
+    {
+        return function (string $type, string $output) use ($parser, $handle, $raw, &$stderr): void {
+            if ($type === 'err') {
+                $stderr .= $output;
 
-                        return;
-                    }
+                return;
+            }
 
-                    fwrite($raw, $output);
+            fwrite($raw, $output);
 
-                    foreach ($parser->feed($output) as $message) {
-                        $handle($message);
-                    }
-                },
-            );
-
-            foreach ($parser->flush() as $message) {
+            foreach ($parser->feed($output) as $message) {
                 $handle($message);
             }
-        } finally {
-            fclose($raw);
-
-            if ($stderr !== '') {
-                File::put($run->storagePath("streams/{$phase->value}-{$step->attempt}.stderr"), $stderr);
-            }
-        }
-
-        return new ClaudeResult($result->exitCode() ?? -1, $sessionId, $model, $resultEvent, $stderr);
+        };
     }
 
     /**
