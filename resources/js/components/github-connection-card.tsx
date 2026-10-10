@@ -114,6 +114,7 @@ function CredentialsSetup() {
                     <Label htmlFor="client_id">Client ID</Label>
                     <Input
                         id="client_id"
+                        autoComplete="off"
                         required
                         value={data.client_id}
                         onChange={(event) =>
@@ -131,6 +132,7 @@ function CredentialsSetup() {
                     <Input
                         id="client_secret"
                         type="password"
+                        autoComplete="new-password"
                         required
                         value={data.client_secret}
                         onChange={(event) =>
