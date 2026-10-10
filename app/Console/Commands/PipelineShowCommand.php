@@ -32,6 +32,21 @@ class PipelineShowCommand extends Command
             return self::FAILURE;
         }
 
+        $this->renderSummary($run);
+        $this->newLine();
+        $this->renderSteps($run);
+
+        if ($this->option('no-events')) {
+            return self::SUCCESS;
+        }
+
+        $this->renderEvents($run, $formatter);
+
+        return self::SUCCESS;
+    }
+
+    protected function renderSummary(Run $run): void
+    {
         $this->components->twoColumnDetail('<fg=white;options=bold>Run #'.$run->id.'</>', $this->status($run->status->value));
         $this->components->twoColumnDetail('Project', $run->project->name);
         $this->components->twoColumnDetail('Prompt', str($run->prompt)->squish()->limit(80)->toString());
@@ -48,8 +63,10 @@ class PipelineShowCommand extends Command
         if ($run->error) {
             $this->components->twoColumnDetail('Fout', '<fg=red>'.str($run->error)->limit(120).'</>');
         }
+    }
 
-        $this->newLine();
+    protected function renderSteps(Run $run): void
+    {
         $this->table(
             ['Fase', 'Poging', 'Status', 'Start', 'Duur', 'Exit', 'Tokens in/out', 'Kosten'],
             $run->steps()->orderBy('id')->get()->map(fn (RunStep $step) => [
@@ -63,11 +80,10 @@ class PipelineShowCommand extends Command
                 $step->phase->isAgent() ? '$'.number_format((float) $step->cost_usd, 4) : '',
             ]),
         );
+    }
 
-        if ($this->option('no-events')) {
-            return self::SUCCESS;
-        }
-
+    protected function renderEvents(Run $run, EventFormatter $formatter): void
+    {
         $width = (new Terminal)->getWidth();
         $events = $run->events()->orderBy('sequence');
 
@@ -85,8 +101,6 @@ class PipelineShowCommand extends Command
 
         $this->newLine();
         $this->line('<fg=gray>Bestanden: '.$run->storagePath().'</>');
-
-        return self::SUCCESS;
     }
 
     protected function status(string $status): string

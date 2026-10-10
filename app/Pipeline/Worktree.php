@@ -34,27 +34,42 @@ class Worktree
      */
     public function create(Run $run, RunStep $step): void
     {
-        $project = $run->project;
         $path = $this->pathFor($run);
         $branch = $run->branch ?? $this->branchFor($run);
 
+        $this->ensurePathIsFree($path);
+        $this->addWorktree($run, $step, $path, $branch);
+
+        $run->forceFill(['branch' => $branch, 'worktree_path' => $path])->save();
+    }
+
+    protected function ensurePathIsFree(string $path): void
+    {
         if (is_dir($path)) {
             throw new RuntimeException("Worktree path [{$path}] already exists. Run pipeline:cleanup first.");
         }
 
         File::ensureDirectoryExists(dirname($path));
+    }
 
+    /**
+     * Re-attach the branch if it already exists (resuming a run), otherwise
+     * branch it off the project's current base commit.
+     */
+    protected function addWorktree(Run $run, RunStep $step, string $path, string $branch): void
+    {
+        $project = $run->project;
         $branchExists = $this->shell->run($run, $step, ['git', 'rev-parse', '--verify', '--quiet', "refs/heads/{$branch}"], $project->path, mustSucceed: false)->successful();
 
         if ($branchExists) {
             $this->shell->run($run, $step, ['git', 'worktree', 'add', $path, $branch], $project->path);
-        } else {
-            $baseCommit = trim($this->shell->run($run, $step, ['git', 'rev-parse', $project->branch], $project->path)->output());
-            $this->shell->run($run, $step, ['git', 'worktree', 'add', '-b', $branch, $path, $baseCommit], $project->path);
-            $run->base_commit = $baseCommit;
+
+            return;
         }
 
-        $run->forceFill(['branch' => $branch, 'worktree_path' => $path])->save();
+        $baseCommit = trim($this->shell->run($run, $step, ['git', 'rev-parse', $project->branch], $project->path)->output());
+        $this->shell->run($run, $step, ['git', 'worktree', 'add', '-b', $branch, $path, $baseCommit], $project->path);
+        $run->base_commit = $baseCommit;
     }
 
     /**
@@ -92,25 +107,39 @@ class Worktree
     {
         $path = (string) $run->worktree_path;
 
+        $this->commitPendingChanges($run, $step, $path);
+        $head = trim($this->shell->run($run, $step, ['git', 'rev-parse', 'HEAD'], $path)->output());
+
+        if ($run->base_commit) {
+            $this->writeDiffArtifact($run, $step, $path, $head);
+        }
+
+        return $head;
+    }
+
+    protected function commitPendingChanges(Run $run, RunStep $step, string $path): void
+    {
         $this->shell->run($run, $step, ['git', 'add', '--all'], $path);
 
         $hasChanges = ! $this->shell->run($run, $step, ['git', 'diff', '--cached', '--quiet'], $path, mustSucceed: false)->successful();
 
-        if ($hasChanges) {
-            $message = sprintf("pipeline run #%d\n\n%s", $run->id, $run->prompt);
-            $this->shell->run($run, $step, [...$this->authorFlags(), 'commit', '--no-verify', '--quiet', '-m', $message], $path);
+        if (! $hasChanges) {
+            return;
         }
 
-        $head = trim($this->shell->run($run, $step, ['git', 'rev-parse', 'HEAD'], $path)->output());
+        $message = sprintf("pipeline run #%d\n\n%s", $run->id, $run->prompt);
+        $this->shell->run($run, $step, [...$this->authorFlags(), 'commit', '--no-verify', '--quiet', '-m', $message], $path);
+    }
 
-        if ($run->base_commit) {
-            $diff = $this->shell->run($run, $step, ['git', 'diff', '--binary', $run->base_commit, $head], $path, mustSucceed: false);
-            File::ensureDirectoryExists($run->storagePath());
-            File::put($run->storagePath('final.diff'), $diff->output());
-            $this->shell->run($run, $step, ['git', 'diff', '--stat', $run->base_commit, $head], $path, mustSucceed: false);
-        }
-
-        return $head;
+    /**
+     * Keep a copy of what the run actually changed, for the "files" tab.
+     */
+    protected function writeDiffArtifact(Run $run, RunStep $step, string $path, string $head): void
+    {
+        $diff = $this->shell->run($run, $step, ['git', 'diff', '--binary', $run->base_commit, $head], $path, mustSucceed: false);
+        File::ensureDirectoryExists($run->storagePath());
+        File::put($run->storagePath('final.diff'), $diff->output());
+        $this->shell->run($run, $step, ['git', 'diff', '--stat', $run->base_commit, $head], $path, mustSucceed: false);
     }
 
     /**

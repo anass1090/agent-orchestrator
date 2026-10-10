@@ -13,7 +13,17 @@ class ProjectController extends Controller
 {
     public function index(): Response
     {
-        $projects = Project::query()
+        return Inertia::render('projects/index', [
+            'projects' => $this->projectsWithCounts(),
+        ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function projectsWithCounts(): array
+    {
+        return array_values(Project::query()
             ->withCount([
                 'runs',
                 'runs as succeeded_count' => fn ($query) => $query->where('status', RunStatus::Succeeded),
@@ -22,10 +32,8 @@ class ProjectController extends Controller
             ])
             ->withSum('runs', 'cost_usd')
             ->orderBy('name')
-            ->get();
-
-        return Inertia::render('projects/index', [
-            'projects' => $projects->map(fn (Project $project) => [
+            ->get()
+            ->map(fn (Project $project) => [
                 'id' => $project->id,
                 'name' => $project->name,
                 'path' => $project->path,
@@ -36,8 +44,8 @@ class ProjectController extends Controller
                 'failed_count' => $project->failed_count,
                 'error_count' => $project->error_count,
                 'cost_usd' => (float) $project->runs_sum_cost_usd,
-            ]),
-        ]);
+            ])
+            ->all());
     }
 
     public function store(StoreProjectRequest $request): RedirectResponse

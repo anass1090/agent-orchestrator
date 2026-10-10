@@ -20,21 +20,37 @@ class PipelineProjectCommand extends Command
      */
     public function handle(): int
     {
+        $path = $this->resolveRepositoryPath();
+
+        if ($path === null) {
+            return self::FAILURE;
+        }
+
+        $project = $this->saveProject($path);
+
+        $this->components->info("Project [{$project->name}] geregistreerd: {$project->path} ({$project->branch})");
+
+        return self::SUCCESS;
+    }
+
+    protected function resolveRepositoryPath(): ?string
+    {
         $path = realpath($this->argument('path'));
 
         if ($path === false || ! is_dir($path.'/.git')) {
             $this->error("[{$this->argument('path')}] is geen git-repository.");
 
-            return self::FAILURE;
+            return null;
         }
 
-        $project = Project::updateOrCreate(
+        return $path;
+    }
+
+    protected function saveProject(string $path): Project
+    {
+        return Project::updateOrCreate(
             ['name' => $this->argument('name')],
             ['path' => $path, 'branch' => $this->option('branch'), 'remote' => $this->option('remote') ?: null],
         );
-
-        $this->components->info("Project [{$project->name}] geregistreerd: {$project->path} ({$project->branch})");
-
-        return self::SUCCESS;
     }
 }

@@ -47,13 +47,31 @@ class PipelineRunCommand extends Command
 
         $this->components->info("Run #{$run->id} gestart voor {$run->project->name}");
 
+        $this->trapAbortSignal($pipeline);
+        $this->registerCrashSafetyNet($pipeline, $run, $keepWorktree);
+
+        $pipeline->execute($run, $until, $keepWorktree);
+
+        $this->newLine();
+        $this->call('pipeline:show', ['run' => $run->id, '--no-events' => true]);
+
+        return $run->status === RunStatus::Succeeded || $run->status === RunStatus::Paused ? self::SUCCESS : self::FAILURE;
+    }
+
+    protected function trapAbortSignal(Pipeline $pipeline): void
+    {
         $this->trap([SIGINT, SIGTERM], function () use ($pipeline) {
             $this->newLine();
             $this->components->warn('Signaal ontvangen: huidige stap wordt gestopt, daarna commit, push en opruimen.');
             $pipeline->abort();
         });
+    }
 
-        // Last resort for fatal errors: never leave a worktree behind.
+    /**
+     * Last resort for fatal errors: never leave a worktree behind.
+     */
+    protected function registerCrashSafetyNet(Pipeline $pipeline, Run $run, bool $keepWorktree): void
+    {
         register_shutdown_function(function () use ($pipeline, $run, $keepWorktree) {
             if ($keepWorktree) {
                 return;
@@ -74,13 +92,6 @@ class PipelineRunCommand extends Command
                 // pipeline:cleanup handles whatever is still left.
             }
         });
-
-        $pipeline->execute($run, $until, $keepWorktree);
-
-        $this->newLine();
-        $this->call('pipeline:show', ['run' => $run->id, '--no-events' => true]);
-
-        return $run->status === RunStatus::Succeeded || $run->status === RunStatus::Paused ? self::SUCCESS : self::FAILURE;
     }
 
     protected function resolveRun(Pipeline $pipeline): ?Run

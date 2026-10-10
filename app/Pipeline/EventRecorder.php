@@ -40,19 +40,7 @@ class EventRecorder
     public function record(Run $run, Phase $phase, ?RunStep $step, string $type, ?string $tool = null, ?string $summary = null, array $payload = []): RunEvent
     {
         $sequence = $this->nextSequence($run);
-        $payload = $this->sanitize($payload);
-        $payloadPath = null;
-
-        $json = (string) json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-        if (strlen($json) > config('pipeline.payload_max_bytes')) {
-            $payloadPath = $run->storagePath("payloads/{$sequence}.json");
-            File::ensureDirectoryExists(dirname($payloadPath));
-            File::put($payloadPath, $json);
-
-            $payload = $this->truncate($payload, (int) config('pipeline.payload_string_preview'));
-            $payload['_truncated'] = true;
-        }
+        [$payload, $payloadPath] = $this->resolvePayload($run, $sequence, $payload);
 
         $event = $run->events()->create([
             'run_step_id' => $step?->id,
@@ -69,6 +57,32 @@ class EventRecorder
         $this->reporter->event($event);
 
         return $event;
+    }
+
+    /**
+     * Oversized payloads go to disk in full; the row keeps a truncated
+     * preview so it stays queryable.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array{0: array<string, mixed>, 1: ?string}
+     */
+    protected function resolvePayload(Run $run, int $sequence, array $payload): array
+    {
+        $payload = $this->sanitize($payload);
+        $json = (string) json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+
+        if (strlen($json) <= config('pipeline.payload_max_bytes')) {
+            return [$payload, null];
+        }
+
+        $payloadPath = $run->storagePath("payloads/{$sequence}.json");
+        File::ensureDirectoryExists(dirname($payloadPath));
+        File::put($payloadPath, $json);
+
+        $payload = $this->truncate($payload, (int) config('pipeline.payload_string_preview'));
+        $payload['_truncated'] = true;
+
+        return [$payload, $payloadPath];
     }
 
     protected function nextSequence(Run $run): int

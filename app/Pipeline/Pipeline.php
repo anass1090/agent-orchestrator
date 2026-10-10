@@ -46,40 +46,60 @@ class Pipeline
      */
     public function execute(Run $run, ?Phase $until = null, bool $keepWorktree = false): Run
     {
+        $this->markRunning($run);
+
+        try {
+            $this->runPhases($run, $until);
+        } catch (Throwable $e) {
+            $this->markFailure($run, $e);
+        } finally {
+            $this->finalize($run, $until, $keepWorktree);
+        }
+
+        return $run;
+    }
+
+    protected function markRunning(Run $run): void
+    {
         $run->forceFill([
             'status' => RunStatus::Running,
             'started_at' => now(),
             'pid' => getmypid(),
         ])->save();
+    }
 
-        try {
-            $this->setup($run);
-            $this->plan($run);
+    protected function runPhases(Run $run, ?Phase $until): void
+    {
+        $this->setup($run);
+        $this->plan($run);
 
-            if ($until !== Phase::Plan) {
-                $this->build($run);
+        if ($until !== Phase::Plan) {
+            $this->build($run);
 
-                if ($until !== Phase::Build) {
-                    $this->fixLoop($run);
-                }
+            if ($until !== Phase::Build) {
+                $this->fixLoop($run);
             }
-
-            if ($until !== null && $run->status === RunStatus::Running) {
-                $run->forceFill(['status' => RunStatus::Paused, 'stop_reason' => "stopped_after_{$until->value}"])->save();
-            }
-        } catch (Throwable $e) {
-            $this->markFailure($run, $e);
-        } finally {
-            $this->commands->resume();
-
-            if (! $keepWorktree && $until === null) {
-                $this->finish($run);
-            }
-
-            $this->refreshTotals($run);
         }
 
-        return $run;
+        $this->pauseIfStoppingEarly($run, $until);
+    }
+
+    protected function pauseIfStoppingEarly(Run $run, ?Phase $until): void
+    {
+        if ($until !== null && $run->status === RunStatus::Running) {
+            $run->forceFill(['status' => RunStatus::Paused, 'stop_reason' => "stopped_after_{$until->value}"])->save();
+        }
+    }
+
+    protected function finalize(Run $run, ?Phase $until, bool $keepWorktree): void
+    {
+        $this->commands->resume();
+
+        if (! $keepWorktree && $until === null) {
+            $this->finish($run);
+        }
+
+        $this->refreshTotals($run);
     }
 
     public function setup(Run $run): void
@@ -325,24 +345,44 @@ class Pipeline
 
     protected function runCheck(Run $run, RunStep $step, Phase $check): CheckOutcome
     {
+        $path = (string) $run->worktree_path;
+        [$command, $exitCode, $output] = $this->executeCheckCommand($run, $check, $path);
+
+        return $this->recordCheckOutcome($run, $step, $check, $path, $command, $exitCode, $output);
+    }
+
+    /**
+     * @return array{0: list<string>, 1: ?int, 2: string}
+     */
+    protected function executeCheckCommand(Run $run, Phase $check, string $path): array
+    {
         /** @var list<string> $command */
         $command = config("pipeline.checks.{$check->value}");
-        $path = (string) $run->worktree_path;
-        $exitCode = null;
 
         if (str_starts_with($command[0], './') && ! is_file($path.'/'.$command[0])) {
-            $output = "Tool ontbreekt: {$command[0]} bestaat niet in het project.";
-        } else {
-            try {
-                $result = $this->commands->run($command, $path, (int) config('pipeline.timeouts.check'), $run->project);
-                $exitCode = $result->exitCode();
-                $output = trim($result->output()."\n".$result->errorOutput());
-            } catch (ProcessTimedOutException $e) {
-                $output = trim($e->result->output()."\n".$e->result->errorOutput())
-                    ."\n\nCheck timed out after ".config('pipeline.timeouts.check').'s.';
-            }
+            return [$command, null, "Tool ontbreekt: {$command[0]} bestaat niet in het project."];
         }
 
+        try {
+            $result = $this->commands->run($command, $path, (int) config('pipeline.timeouts.check'), $run->project);
+
+            return [$command, $result->exitCode(), trim($result->output()."\n".$result->errorOutput())];
+        } catch (ProcessTimedOutException $e) {
+            $output = trim($e->result->output()."\n".$e->result->errorOutput())
+                ."\n\nCheck timed out after ".config('pipeline.timeouts.check').'s.';
+
+            return [$command, null, $output];
+        }
+    }
+
+    /**
+     * Persist the check's log and fingerprint, update the step and record the
+     * event, then build the outcome every caller acts on.
+     *
+     * @param  list<string>  $command
+     */
+    protected function recordCheckOutcome(Run $run, RunStep $step, Phase $check, string $path, array $command, ?int $exitCode, string $output): CheckOutcome
+    {
         $passed = $exitCode === 0;
         $logPath = $run->storagePath("checks/{$step->attempt}-{$check->value}.log");
         File::ensureDirectoryExists(dirname($logPath));

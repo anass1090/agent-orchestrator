@@ -46,6 +46,20 @@ class RunController extends Controller
     {
         $run = $pipeline->start(Project::findOrFail($request->integer('project_id')), $request->string('prompt')->trim()->value());
 
+        try {
+            $launcher->launch($run, $this->buildLaunchArguments($request, $run));
+        } catch (Throwable $e) {
+            $run->forceFill(['status' => RunStatus::Error, 'stop_reason' => 'launch_failed', 'error' => $e->getMessage()])->save();
+        }
+
+        return to_route('runs.show', $run);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function buildLaunchArguments(StoreRunRequest $request, Run $run): array
+    {
         $arguments = ['pipeline:run', '--run='.$run->id];
 
         if ($request->filled('until')) {
@@ -56,13 +70,7 @@ class RunController extends Controller
             $arguments[] = '--keep-worktree';
         }
 
-        try {
-            $launcher->launch($run, $arguments);
-        } catch (Throwable $e) {
-            $run->forceFill(['status' => RunStatus::Error, 'stop_reason' => 'launch_failed', 'error' => $e->getMessage()])->save();
-        }
-
-        return to_route('runs.show', $run);
+        return $arguments;
     }
 
     public function show(Request $request, Run $run, EventFormatter $formatter): Response
