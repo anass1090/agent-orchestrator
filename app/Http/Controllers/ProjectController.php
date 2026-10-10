@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Enums\RunStatus;
+use App\GitHub\GithubRepositoryCloner;
+use App\Http\Requests\StoreProjectFromGithubRequest;
 use App\Http\Requests\StoreProjectRequest;
+use App\Models\GithubConnection;
 use App\Models\Project;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -15,6 +18,7 @@ class ProjectController extends Controller
     {
         return Inertia::render('projects/index', [
             'projects' => $this->projectsWithCounts(),
+            'github' => GithubConnection::summary(),
         ]);
     }
 
@@ -58,5 +62,39 @@ class ProjectController extends Controller
         ]);
 
         return to_route('projects.index')->with('status', "Project {$project->name} geregistreerd.");
+    }
+
+    public function storeFromGithub(StoreProjectFromGithubRequest $request, GithubRepositoryCloner $cloner): RedirectResponse
+    {
+        $connection = GithubConnection::current();
+
+        if (! $connection?->connected()) {
+            return to_route('projects.index')->with('status', 'GitHub is niet verbonden.');
+        }
+
+        $path = $cloner->clone($request->string('full_name')->value(), $connection->access_token);
+
+        $project = Project::create([
+            'name' => $this->uniqueProjectName($request->projectName()),
+            'path' => $path,
+            'branch' => $request->string('branch')->value(),
+            'remote' => $request->string('remote')->value() ?: null,
+            'github_full_name' => $request->string('full_name')->value(),
+        ]);
+
+        return to_route('projects.index')->with('status', "Project {$project->name} geregistreerd vanuit GitHub.");
+    }
+
+    protected function uniqueProjectName(string $base): string
+    {
+        $name = $base;
+        $suffix = 2;
+
+        while (Project::where('name', $name)->exists()) {
+            $name = "{$base}-{$suffix}";
+            $suffix++;
+        }
+
+        return $name;
     }
 }
