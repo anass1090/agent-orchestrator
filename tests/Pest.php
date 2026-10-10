@@ -44,7 +44,18 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Symfony Process only inherits variables present in both getenv() and $_SERVER.
+ */
+function setProcessEnv(string $key, ?string $value): void
 {
-    // ..
+    if ($value === null) {
+        putenv($key);
+        unset($_SERVER[$key], $_ENV[$key]);
+
+        return;
+    }
+
+    putenv("{$key}={$value}");
+    $_SERVER[$key] = $_ENV[$key] = $value;
 }
