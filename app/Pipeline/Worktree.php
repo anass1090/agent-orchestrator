@@ -4,6 +4,7 @@ namespace App\Pipeline;
 
 use App\Models\Run;
 use App\Models\RunStep;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 
@@ -78,6 +79,8 @@ class Worktree
      * vendor/ is copied rather than symlinked: Composer's autoloader resolves
      * app/ relative to the real vendor location, so a symlink would load the
      * original project's classes instead of the worktree's.
+     *
+     * @throws FileNotFoundException
      */
     public function prepare(Run $run, RunStep $step): void
     {
@@ -185,6 +188,9 @@ class Worktree
         $run->forceFill(['worktree_path' => null])->save();
     }
 
+    /**
+     * @throws FileNotFoundException
+     */
     protected function writeEnvFile(Run $run, RunStep $step): void
     {
         $project = $run->project;
