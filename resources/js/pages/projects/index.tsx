@@ -1,8 +1,16 @@
 import { Link, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -13,11 +21,18 @@ import {
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
 import { usd } from '@/lib/format';
-import { store } from '@/routes/projects';
+import { index as connectionsIndex } from '@/routes/connections';
+import { repositories as repositoriesRoute } from '@/routes/github';
+import { store, storeFromGithub } from '@/routes/projects';
 import { index as runsIndex } from '@/routes/runs';
-import type { Project } from '@/types';
+import type { GithubConnection, GithubRepository, Project } from '@/types';
 
-export default function ProjectsIndex({ projects }: { projects: Project[] }) {
+type Props = {
+    projects: Project[];
+    github: GithubConnection | null;
+};
+
+export default function ProjectsIndex({ projects, github }: Props) {
     return (
         <AppLayout title="Projecten">
             <h1 className="text-2xl font-semibold">Projecten</h1>
@@ -101,6 +116,9 @@ export default function ProjectsIndex({ projects }: { projects: Project[] }) {
 
             <h2 className="pt-4 text-xl font-semibold">Project registreren</h2>
             <RegisterForm />
+
+            <h2 className="pt-4 text-xl font-semibold">Vanuit GitHub</h2>
+            <GithubRegisterForm github={github} />
         </AppLayout>
     );
 }
@@ -149,6 +167,125 @@ function RegisterForm() {
             ))}
             <div>
                 <Button type="submit" disabled={processing}>
+                    Registreren
+                </Button>
+            </div>
+        </form>
+    );
+}
+
+function GithubRegisterForm({ github }: { github: GithubConnection | null }) {
+    const [repositories, setRepositories] = useState<GithubRepository[] | null>(
+        null,
+    );
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!github) {
+            return;
+        }
+
+        fetch(repositoriesRoute.url(), {
+            headers: { Accept: 'application/json' },
+        })
+            .then((response) => response.json())
+            .then(setRepositories)
+            .catch(() =>
+                setLoadError('Repositories konden niet geladen worden.'),
+            );
+    }, [github]);
+
+    const { data, setData, submit, processing, errors } = useForm({
+        full_name: '',
+        branch: 'main',
+        remote: 'origin',
+    });
+
+    const onSubmit = (event: FormEvent) => {
+        event.preventDefault();
+        submit(storeFromGithub());
+    };
+
+    const selectRepository = (fullName: string) => {
+        const repository = repositories?.find(
+            (candidate) => candidate.full_name === fullName,
+        );
+
+        if (!repository) {
+            return;
+        }
+
+        setData({
+            full_name: repository.full_name,
+            branch: repository.default_branch,
+            remote: data.remote,
+        });
+    };
+
+    if (!github) {
+        return (
+            <p className="text-sm text-muted-foreground">
+                <Link href={connectionsIndex()} className="underline">
+                    Connect GitHub
+                </Link>{' '}
+                om ook private repositories te kunnen registreren.
+            </p>
+        );
+    }
+
+    return (
+        <form onSubmit={onSubmit} className="grid max-w-xl gap-4">
+            <div className="grid gap-2">
+                <Label htmlFor="repository">Repository</Label>
+                <Select value={data.full_name} onValueChange={selectRepository}>
+                    <SelectTrigger id="repository">
+                        <SelectValue placeholder="Kies een repository" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {repositories?.map((repository) => (
+                            <SelectItem
+                                key={repository.full_name}
+                                value={repository.full_name}
+                            >
+                                {repository.full_name}
+                                {repository.private ? ' (privé)' : ''}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                {errors.full_name && (
+                    <p className="text-sm text-destructive">
+                        {errors.full_name}
+                    </p>
+                )}
+            </div>
+            <div className="grid gap-2">
+                <Label htmlFor="github-branch">Basisbranch</Label>
+                <Input
+                    id="github-branch"
+                    required
+                    value={data.branch}
+                    onChange={(event) => setData('branch', event.target.value)}
+                />
+            </div>
+            <div className="grid gap-2">
+                <Label htmlFor="github-remote">
+                    Remote (leeg = niet pushen)
+                </Label>
+                <Input
+                    id="github-remote"
+                    value={data.remote}
+                    onChange={(event) => setData('remote', event.target.value)}
+                />
+            </div>
+            {loadError && (
+                <p className="text-sm text-destructive">{loadError}</p>
+            )}
+            <div>
+                <Button
+                    type="submit"
+                    disabled={processing || data.full_name === ''}
+                >
                     Registreren
                 </Button>
             </div>
