@@ -9,7 +9,7 @@ class GithubDisconnectController extends Controller
 {
     public function __invoke(): RedirectResponse
     {
-        GithubConnection::current()?->delete();
+        GithubConnection::current()?->disconnect();
 
         return to_route('connections.index')->with('status', 'GitHub-koppeling verwijderd.');
     }

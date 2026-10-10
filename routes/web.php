@@ -7,6 +7,7 @@ use App\Http\Controllers\ClaudeStatusController;
 use App\Http\Controllers\ConnectionsController;
 use App\Http\Controllers\GithubCallbackController;
 use App\Http\Controllers\GithubConnectController;
+use App\Http\Controllers\GithubCredentialsController;
 use App\Http\Controllers\GithubDisconnectController;
 use App\Http\Controllers\GithubRepositoriesController;
 use App\Http\Controllers\ProjectController;
@@ -40,6 +41,7 @@ Route::post('/claude/logout', ClaudeLogoutController::class)->name('claude.logou
 
 Route::get('/connections', [ConnectionsController::class, 'index'])->name('connections.index');
 
+Route::post('/github/credentials', GithubCredentialsController::class)->name('github.credentials');
 Route::get('/github/connect', GithubConnectController::class)->name('github.connect');
 Route::get('/github/callback', GithubCallbackController::class)->name('github.callback');
 Route::post('/github/disconnect', GithubDisconnectController::class)->name('github.disconnect');

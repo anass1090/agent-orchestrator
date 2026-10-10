@@ -14,6 +14,7 @@ class ConnectionsController extends Controller
         return Inertia::render('connections/index', [
             'claude' => $authenticator->status(),
             'github' => GithubConnection::summary(),
+            'githubConfigured' => GithubConnection::configured(),
         ]);
     }
 }

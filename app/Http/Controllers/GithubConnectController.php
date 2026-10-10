@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\GitHub\GithubOAuthClient;
+use App\Models\GithubConnection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
 
@@ -10,8 +11,8 @@ class GithubConnectController extends Controller
 {
     public function __invoke(GithubOAuthClient $client): RedirectResponse
     {
-        if (! config('services.github.client_id')) {
-            return to_route('connections.index')->with('status', 'GitHub is niet geconfigureerd: GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET ontbreken in .env.');
+        if (! GithubConnection::configured()) {
+            return to_route('connections.index')->with('status', 'Vul eerst de GitHub Client ID en Secret in hieronder.');
         }
 
         $state = Str::random(40);
