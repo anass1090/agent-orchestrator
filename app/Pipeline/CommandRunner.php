@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Process;
 
 /**
  * Single entry point for every external command, so the environment is always
- * sanitised and a running process can be stopped when the pipeline is aborted.
+ * sanitized, and a running process can be stopped when the pipeline is aborted.
  */
 #[Singleton]
 class CommandRunner
