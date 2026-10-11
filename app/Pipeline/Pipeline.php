@@ -363,7 +363,7 @@ class Pipeline
         }
     }
 
-    protected function agent(Run $run, Phase $phase, int $attempt, string $prompt, ?string $resumeSessionId = null)
+    protected function agent(Run $run, Phase $phase, int $attempt, string $prompt, ?string $resumeSessionId = null): ClaudeResult
     {
         $system = $this->prompts->system($phase, ['max_attempts' => (int) config('pipeline.max_fix_attempts')]);
 
