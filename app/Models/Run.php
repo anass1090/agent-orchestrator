@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $base_commit
  * @property string|null $result_commit
  * @property bool $pushed
+ * @property bool $merged
  * @property string|null $plan_session_id
  * @property string|null $build_session_id
  * @property int|null $pid
@@ -43,7 +44,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 #[Fillable([
     'project_id', 'prompt', 'branch', 'status', 'failed_check', 'fix_attempts', 'stop_reason', 'error',
-    'model', 'worktree_path', 'base_commit', 'result_commit', 'pushed', 'plan_session_id', 'build_session_id',
+    'model', 'worktree_path', 'base_commit', 'result_commit', 'pushed', 'merged', 'plan_session_id', 'build_session_id',
     'pid', 'input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens', 'cost_usd',
     'duration_ms', 'started_at', 'finished_at',
 ])]
@@ -58,6 +59,7 @@ class Run extends Model
     protected $attributes = [
         'fix_attempts' => 0,
         'pushed' => false,
+        'merged' => false,
         'input_tokens' => 0,
         'output_tokens' => 0,
         'cache_creation_tokens' => 0,
@@ -133,6 +135,7 @@ class Run extends Model
         return [
             'status' => RunStatus::class,
             'pushed' => 'boolean',
+            'merged' => 'boolean',
             'fix_attempts' => 'integer',
             'cost_usd' => 'decimal:6',
             'started_at' => 'datetime',

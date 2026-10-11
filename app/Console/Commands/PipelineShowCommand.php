@@ -50,7 +50,7 @@ class PipelineShowCommand extends Command
         $this->components->twoColumnDetail('<fg=white;options=bold>Run #'.$run->id.'</>', $this->status($run->status->value));
         $this->components->twoColumnDetail('Project', $run->project->name);
         $this->components->twoColumnDetail('Prompt', str($run->prompt)->squish()->limit(80)->toString());
-        $this->components->twoColumnDetail('Branch', ($run->branch ?? '-').($run->pushed ? ' (gepusht)' : ''));
+        $this->components->twoColumnDetail('Branch', ($run->branch ?? '-').($run->pushed ? ' (gepusht)' : '').($run->merged ? ', gemerged' : ''));
         $this->components->twoColumnDetail('Model', $run->model ?? '-');
         $this->components->twoColumnDetail('Stopreden', $run->stop_reason ?? '-');
         $this->components->twoColumnDetail('Gefaalde controle', $run->failed_check ?? '-');

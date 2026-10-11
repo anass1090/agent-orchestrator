@@ -163,14 +163,18 @@ class Worktree
             return false;
         }
 
-        $this->runPush($run, $step, $remote);
+        $this->pushBranch($run, $step, $remote, (string) $run->branch);
 
         return true;
     }
 
-    protected function runPush(Run $run, RunStep $step, string $remote): void
+    /**
+     * Pushes any branch through the same GitHub-token handling as the run's
+     * own branch, so other steps (e.g. the auto-merge into the base branch)
+     * can push through the identical, security-hardened path.
+     */
+    public function pushBranch(Run $run, RunStep $step, string $remote, string $branch): void
     {
-        $branch = (string) $run->branch;
         $fullName = $run->project->github_full_name;
         $token = $fullName !== null ? GithubConnection::current()?->access_token : null;
 
@@ -269,9 +273,12 @@ class Worktree
     }
 
     /**
+     * The `-c user.name=`/`-c user.email=` flags every pipeline-authored
+     * commit uses, shared with the auto-merge step.
+     *
      * @return list<string>
      */
-    protected function authorFlags(): array
+    public function authorFlags(): array
     {
         $author = config('pipeline.commit_author');
         $flags = ['git'];

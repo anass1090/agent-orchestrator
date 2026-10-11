@@ -21,6 +21,7 @@ export type Run = {
     error: string | null;
     branch: string | null;
     pushed: boolean;
+    merged: boolean;
     model: string | null;
     fix_attempts: number;
     max_fix_attempts: number;
