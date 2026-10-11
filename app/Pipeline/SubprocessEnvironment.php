@@ -33,6 +33,10 @@ class SubprocessEnvironment
         $environment['GIT_TERMINAL_PROMPT'] = '0';
         $environment['COMPOSER_HOME'] = $this->composerHome();
 
+        foreach ($this->gitIdentity() as $key => $value) {
+            $environment[$key] = $value;
+        }
+
         foreach ($this->overrides($project) as $key => $value) {
             $environment[$key] = (string) $value;
         }
@@ -48,6 +52,29 @@ class SubprocessEnvironment
     public function overrides(?Project $project): array
     {
         return $project->env_overrides ?? config('pipeline.default_env_overrides');
+    }
+
+    /**
+     * The same identity Worktree::authorFlags() gives the pipeline's own
+     * commits, for the commits the agent makes itself with a plain
+     * `git commit` (inside the container git can't detect one on its own).
+     *
+     * @return array<string, string>
+     */
+    protected function gitIdentity(): array
+    {
+        $author = config('pipeline.commit_author');
+        $identity = [];
+
+        if ($author['name']) {
+            $identity['GIT_AUTHOR_NAME'] = $identity['GIT_COMMITTER_NAME'] = $author['name'];
+        }
+
+        if ($author['email']) {
+            $identity['GIT_AUTHOR_EMAIL'] = $identity['GIT_COMMITTER_EMAIL'] = $author['email'];
+        }
+
+        return $identity;
     }
 
     /**

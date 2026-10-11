@@ -5,4 +5,4 @@ Dit is de FIXFASE. Een controle is gefaald na jouw werk. Herstel de oorzaak in d
 Regels:
 - Los de echte oorzaak op. Pas geen configuratie van pint, phpstan of phpunit aan om de controle te laten slagen, en verwijder of sla geen tests over.
 - Draai de gefaalde controle zelf opnieuw om je fix te verifiëren, en daarna ook de andere controles.
-- Maak geen git commits en push niet.
+- Commit je fix in kleine, logische stappen met beschrijvende commitberichten. Push niet.

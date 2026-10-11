@@ -10,5 +10,5 @@ Na jouw sessie draait de pipeline deze controles, in deze volgorde, en stopt bij
 Zorg dat alle drie slagen. Je mag ze zelf draaien om je werk te controleren. Draai `./vendor/bin/pint` (zonder `--test`) om de opmaak te herstellen.
 
 Regels:
-- Maak geen git commits en push niet; de pipeline doet dat.
+- Commit je werk in kleine, logische stappen met beschrijvende commitberichten. Push niet; de pipeline doet dat.
 - Pas geen configuratie van pint, phpstan of phpunit aan om controles te laten slagen, en verwijder of sla geen bestaande tests over.
