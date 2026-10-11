@@ -1,4 +1,4 @@
-import { Link, useForm } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ import AppLayout from '@/layouts/app-layout';
 import { usd } from '@/lib/format';
 import { index as connectionsIndex } from '@/routes/connections';
 import { repositories as repositoriesRoute } from '@/routes/github';
-import { store, storeFromGithub } from '@/routes/projects';
+import { destroy, storeFromGithub } from '@/routes/projects';
 import { index as runsIndex } from '@/routes/runs';
 import type { GithubConnection, GithubRepository, Project } from '@/types';
 
@@ -50,6 +50,7 @@ export default function ProjectsIndex({ projects, github }: Props) {
                             <TableHead className="text-right">Runs</TableHead>
                             <TableHead>Geslaagd</TableHead>
                             <TableHead className="text-right">Kosten</TableHead>
+                            <TableHead />
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -107,6 +108,25 @@ export default function ProjectsIndex({ projects, github }: Props) {
                                     <TableCell className="text-right tabular-nums">
                                         {usd(project.cost_usd)}
                                     </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            onClick={() => {
+                                                if (
+                                                    confirm(
+                                                        `Project ${project.name} verwijderen, inclusief al zijn runs?`,
+                                                    )
+                                                ) {
+                                                    router.delete(
+                                                        destroy(project.id).url,
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            Verwijderen
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
                             );
                         })}
@@ -114,63 +134,9 @@ export default function ProjectsIndex({ projects, github }: Props) {
                 </Table>
             )}
 
-            <h2 className="pt-4 text-xl font-semibold">Project registreren</h2>
-            <RegisterForm />
-
             <h2 className="pt-4 text-xl font-semibold">Vanuit GitHub</h2>
             <GithubRegisterForm github={github} />
         </AppLayout>
-    );
-}
-
-function RegisterForm() {
-    const { data, setData, submit, processing, errors } = useForm({
-        name: '',
-        path: '',
-        branch: 'main',
-        remote: 'origin',
-    });
-
-    const onSubmit = (event: FormEvent) => {
-        event.preventDefault();
-        submit(store());
-    };
-
-    const fields = [
-        { key: 'name', label: 'Naam', required: true },
-        { key: 'path', label: 'Pad naar de git-repository', required: true },
-        { key: 'branch', label: 'Basisbranch', required: true },
-        {
-            key: 'remote',
-            label: 'Remote (leeg = niet pushen)',
-            required: false,
-        },
-    ] as const;
-
-    return (
-        <form onSubmit={onSubmit} className="grid max-w-xl gap-4">
-            {fields.map(({ key, label, required }) => (
-                <div key={key} className="grid gap-2">
-                    <Label htmlFor={key}>{label}</Label>
-                    <Input
-                        id={key}
-                        required={required}
-                        value={data[key]}
-                        onChange={(event) => setData(key, event.target.value)}
-                    />
-                    {errors[key] && (
-                        <p className="text-sm text-destructive">
-                            {errors[key]}
-                        </p>
-                    )}
-                </div>
-            ))}
-            <div>
-                <Button type="submit" disabled={processing}>
-                    Registreren
-                </Button>
-            </div>
-        </form>
     );
 }
 

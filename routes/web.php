@@ -29,10 +29,11 @@ Route::post('/runs/{run}/stop', RunStopController::class)->name('runs.stop');
 Route::post('/runs/{run}/phases/{phase}', RunPhaseController::class)->name('runs.phase');
 Route::get('/runs/{run}/events/{event:sequence}/payload', RunEventPayloadController::class)->name('runs.events.payload');
 Route::get('/runs/{run}/files/{path}', RunFileController::class)->where('path', '.*')->name('runs.files');
+Route::delete('/runs/{run}', [RunController::class, 'destroy'])->name('runs.destroy');
 
 Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
-Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
 Route::post('/projects/from-github', [ProjectController::class, 'storeFromGithub'])->name('projects.store-from-github');
+Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
 
 Route::get('/claude/status', ClaudeStatusController::class)->name('claude.status');
 Route::post('/claude/login', ClaudeLoginController::class)->name('claude.login');

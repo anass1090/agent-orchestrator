@@ -193,6 +193,23 @@ it('does not signal a process that is not a pipeline command', function () {
     $this->post(route('runs.stop', $run))->assertSessionHas('status', 'Deze run draait niet.');
 });
 
+it('deletes a run and its stored files', function () {
+    $run = finishedRun();
+
+    $this->delete(route('runs.destroy', $run))->assertRedirect(route('runs.index'));
+
+    expect(Run::find($run->id))->toBeNull()
+        ->and(File::exists($run->storagePath()))->toBeFalse();
+});
+
+it('refuses to delete a busy run', function () {
+    $run = Run::factory()->create(['status' => RunStatus::Pending]);
+
+    $this->delete(route('runs.destroy', $run))->assertSessionHas('status');
+
+    expect(Run::find($run->id))->not->toBeNull();
+});
+
 it('runs a single phase in the background', function () {
     $run = finishedRun();
     $this->mock(BackgroundLauncher::class)
@@ -227,17 +244,36 @@ it('lists projects with their success rate', function () {
         ->where('projects.0.runs_count', 2));
 });
 
-it('registers a project that is a git repository', function () {
-    $path = sys_get_temp_dir().'/pipeline-repo-'.uniqid();
-    File::ensureDirectoryExists($path.'/.git');
+it('deletes a project, its runs and its cloned directory', function () {
+    $path = sys_get_temp_dir().'/pipeline-cloned-'.uniqid();
+    File::ensureDirectoryExists($path);
+    $project = Project::factory()->create(['path' => $path, 'github_full_name' => 'octocat/demo']);
+    $run = Run::factory()->for($project)->create(['status' => RunStatus::Succeeded]);
 
-    $this->post('/projects', ['name' => 'demo', 'path' => $path, 'branch' => 'main', 'remote' => ''])
-        ->assertRedirect(route('projects.index'));
+    $this->delete(route('projects.destroy', $project))->assertRedirect(route('projects.index'));
 
-    expect(Project::sole())->name->toBe('demo')->remote->toBeNull();
+    expect(Project::find($project->id))->toBeNull()
+        ->and(Run::find($run->id))->toBeNull()
+        ->and(is_dir($path))->toBeFalse();
+});
 
-    $this->post('/projects', ['name' => 'Bad Name', 'path' => '/nonexistent', 'branch' => 'main'])
-        ->assertSessionHasErrors(['name', 'path']);
+it('keeps a manually-registered project\'s directory on disk when deleted', function () {
+    $path = sys_get_temp_dir().'/pipeline-manual-'.uniqid();
+    File::ensureDirectoryExists($path);
+    $project = Project::factory()->create(['path' => $path, 'github_full_name' => null]);
+
+    $this->delete(route('projects.destroy', $project));
+
+    expect(is_dir($path))->toBeTrue();
 
     File::deleteDirectory($path);
+});
+
+it('refuses to delete a project with a busy run', function () {
+    $project = Project::factory()->create();
+    Run::factory()->for($project)->create(['status' => RunStatus::Pending]);
+
+    $this->delete(route('projects.destroy', $project))->assertSessionHas('status');
+
+    expect(Project::find($project->id))->not->toBeNull();
 });

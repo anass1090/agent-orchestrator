@@ -21,6 +21,7 @@ import AppLayout from '@/layouts/app-layout';
 import { number, usd } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import {
+    destroy,
     index,
     live as liveRoute,
     phase as phaseRoute,
@@ -183,6 +184,19 @@ export default function RunShow(props: Props) {
                                 ))}
                             </>
                         )
+                    )}
+                    {run.can_delete && (
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                                if (confirm(`Run #${run.id} verwijderen?`)) {
+                                    router.delete(destroy(run.id).url);
+                                }
+                            }}
+                        >
+                            Run verwijderen
+                        </Button>
                     )}
                 </div>
             </div>

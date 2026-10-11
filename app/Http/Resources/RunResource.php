@@ -29,6 +29,7 @@ class RunResource extends JsonResource
             'status' => $this->status->value,
             'busy' => $busy,
             'can_stop' => $this->status === RunStatus::Running && $this->hasLiveProcess(),
+            'can_delete' => ! $busy,
             'failed_check' => $this->failed_check,
             'stop_reason' => $this->stop_reason,
             'error' => $this->error,

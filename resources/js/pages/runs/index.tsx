@@ -25,7 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
 import { usd } from '@/lib/format';
 import { index as projectsIndex } from '@/routes/projects';
-import { index, show, store } from '@/routes/runs';
+import { destroy, index, show, store } from '@/routes/runs';
 import type { Paginated, Run } from '@/types';
 
 type Props = {
@@ -144,6 +144,7 @@ export default function RunsIndex({
                                     Kosten
                                 </TableHead>
                                 <TableHead>Gestart</TableHead>
+                                <TableHead />
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -184,6 +185,27 @@ export default function RunsIndex({
                                         {usd(run.cost_usd)}
                                     </TableCell>
                                     <TableCell>{run.created_at}</TableCell>
+                                    <TableCell className="text-right">
+                                        {run.can_delete && (
+                                            <Button
+                                                variant="destructive"
+                                                size="sm"
+                                                onClick={() => {
+                                                    if (
+                                                        confirm(
+                                                            `Run #${run.id} verwijderen?`,
+                                                        )
+                                                    ) {
+                                                        router.delete(
+                                                            destroy(run.id).url,
+                                                        );
+                                                    }
+                                                }}
+                                            >
+                                                Verwijderen
+                                            </Button>
+                                        )}
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

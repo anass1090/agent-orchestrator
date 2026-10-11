@@ -73,6 +73,22 @@ class RunController extends Controller
         return $arguments;
     }
 
+    /**
+     * Refuses while the run is busy, so a live process never keeps writing
+     * to a run that was just deleted out from under it.
+     */
+    public function destroy(Run $run, Pipeline $pipeline): RedirectResponse
+    {
+        if ($run->isBusy()) {
+            return back()->with('status', 'Stop deze run eerst voordat je hem verwijdert.');
+        }
+
+        $pipeline->discard($run);
+        $run->delete();
+
+        return to_route('runs.index')->with('status', 'Run verwijderd.');
+    }
+
     public function show(Request $request, Run $run, EventFormatter $formatter): Response
     {
         $run->load(['project', 'steps' => fn ($query) => $query->orderBy('id')]);

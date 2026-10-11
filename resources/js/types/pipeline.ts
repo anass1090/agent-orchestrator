@@ -16,6 +16,7 @@ export type Run = {
     status: string;
     busy: boolean;
     can_stop: boolean;
+    can_delete: boolean;
     failed_check: string | null;
     stop_reason: string | null;
     error: string | null;

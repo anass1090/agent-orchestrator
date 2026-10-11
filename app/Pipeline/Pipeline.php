@@ -273,6 +273,20 @@ class Pipeline
         $this->step($run, Phase::Cleanup, 0, fn (RunStep $step) => $this->worktree->remove($run, $step));
     }
 
+    /**
+     * Remove a run's worktree (if still present) and its stored files,
+     * without committing, pushing or merging - for discarding a run
+     * entirely rather than finishing it normally.
+     */
+    public function discard(Run $run): void
+    {
+        if ($run->worktree_path !== null && is_dir($run->worktree_path)) {
+            $this->cleanup($run);
+        }
+
+        File::deleteDirectory($run->storagePath());
+    }
+
     public function abort(): void
     {
         $this->commands->abort();
@@ -338,7 +352,7 @@ class Pipeline
         }
     }
 
-    protected function agent(Run $run, Phase $phase, int $attempt, string $prompt, ?string $resumeSessionId = null): ClaudeResult
+    protected function agent(Run $run, Phase $phase, int $attempt, string $prompt, ?string $resumeSessionId = null)
     {
         $system = $this->prompts->system($phase, ['max_attempts' => (int) config('pipeline.max_fix_attempts')]);
 

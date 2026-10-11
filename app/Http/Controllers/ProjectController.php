@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Enums\RunStatus;
 use App\GitHub\GithubRepositoryCloner;
 use App\Http\Requests\StoreProjectFromGithubRequest;
-use App\Http\Requests\StoreProjectRequest;
 use App\Models\GithubConnection;
 use App\Models\Project;
+use App\Models\Run;
+use App\Pipeline\Pipeline;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\File;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -52,18 +54,6 @@ class ProjectController extends Controller
             ->all());
     }
 
-    public function store(StoreProjectRequest $request): RedirectResponse
-    {
-        $project = Project::create([
-            'name' => $request->string('name')->value(),
-            'path' => realpath($request->string('path')->value()),
-            'branch' => $request->string('branch')->value(),
-            'remote' => $request->string('remote')->value() ?: null,
-        ]);
-
-        return to_route('projects.index')->with('status', "Project {$project->name} geregistreerd.");
-    }
-
     public function storeFromGithub(StoreProjectFromGithubRequest $request, GithubRepositoryCloner $cloner): RedirectResponse
     {
         $connection = GithubConnection::current();
@@ -96,5 +86,28 @@ class ProjectController extends Controller
         }
 
         return $name;
+    }
+
+    /**
+     * Deletes its runs (and their worktrees/stored files) along with it, and
+     * the cloned directory for a GitHub-sourced project - but never a
+     * manually-registered one's path, since that is the user's own existing
+     * repository, not ours to remove.
+     */
+    public function destroy(Project $project, Pipeline $pipeline): RedirectResponse
+    {
+        if ($project->runs->contains(fn (Run $run) => $run->isBusy())) {
+            return back()->with('status', 'Stop alle lopende runs van dit project eerst.');
+        }
+
+        $project->runs->each(fn (Run $run) => $pipeline->discard($run));
+
+        if ($project->github_full_name !== null) {
+            File::deleteDirectory($project->path);
+        }
+
+        $project->delete();
+
+        return to_route('projects.index')->with('status', "Project {$project->name} verwijderd.");
     }
 }
