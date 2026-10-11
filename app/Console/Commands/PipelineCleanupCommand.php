@@ -56,7 +56,11 @@ class PipelineCleanupCommand extends Command
     protected function cleanupRun(Pipeline $pipeline, Run $run): void
     {
         if ($run->status === RunStatus::Running) {
-            $run->forceFill(['status' => RunStatus::Error, 'stop_reason' => 'crash', 'error' => 'Process '.$run->pid.' is niet meer actief'])->save();
+            $run->forceFill([
+                'status' => RunStatus::Error,
+                'stop_reason' => 'crash',
+                'error' => 'Process '.$run->pid.' is niet meer actief',
+            ])->save();
         }
 
         $pipeline->finish($run);
