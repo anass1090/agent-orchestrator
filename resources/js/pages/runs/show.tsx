@@ -425,7 +425,12 @@ function EventItem({ runId, event }: { runId: number; event: RunEvent }) {
 function Summary({ run }: { run: Run }) {
     const facts: [string, string][] = [
         ['Project', run.project.name],
-        ['Branch', (run.branch ?? '–') + (run.pushed ? ' (gepusht)' : '')],
+        [
+            'Branch',
+            (run.branch ?? '–') +
+                (run.pushed ? ' (gepusht)' : '') +
+                (run.merged ? ', gemerged' : ''),
+        ],
         ['Model', run.model ?? '–'],
         ['Fixpogingen', `${run.fix_attempts} / ${run.max_fix_attempts}`],
         ['Duur', run.duration],

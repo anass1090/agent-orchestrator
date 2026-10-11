@@ -48,6 +48,30 @@ class Shell
     }
 
     /**
+     * Like run(), but for a command that carries a credential as one of its
+     * arguments: the real command and its output never reach the recorded
+     * event, only the given safe description and the exit code.
+     *
+     * @param  list<string>  $command
+     *
+     * @throws CommandFailed
+     */
+    public function runRedacted(Run $run, RunStep $step, array $command, string $description, string $cwd, string $timeout = 'git'): ProcessResult
+    {
+        $result = $this->commands->run($command, $cwd, (int) config("pipeline.timeouts.{$timeout}"), $run->project);
+
+        $this->recorder->record($run, $step->phase, $step, 'pipeline.command', null,
+            sprintf('$ %s → exit %d', $description, $result->exitCode()),
+        );
+
+        if (! $result->successful()) {
+            throw new CommandFailed(sprintf('`%s` failed with exit %d', $description, $result->exitCode()));
+        }
+
+        return $result;
+    }
+
+    /**
      * @param  list<string>  $command
      */
     protected function display(array $command): string

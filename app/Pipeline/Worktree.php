@@ -2,6 +2,7 @@
 
 namespace App\Pipeline;
 
+use App\Models\GithubConnection;
 use App\Models\Run;
 use App\Models\RunStep;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
@@ -162,9 +163,64 @@ class Worktree
             return false;
         }
 
-        $this->shell->run($run, $step, ['git', 'push', '--set-upstream', $remote, (string) $run->branch], $run->project->path);
+        $this->pushBranch($run, $step, $remote, (string) $run->branch);
 
         return true;
+    }
+
+    /**
+     * Pushes any branch through the same GitHub-token handling as the run's
+     * own branch, so other steps (e.g. the auto-merge into the base branch)
+     * can push through the identical, security-hardened path.
+     */
+    public function pushBranch(Run $run, RunStep $step, string $remote, string $branch): void
+    {
+        $fullName = $run->project->github_full_name;
+        $token = $fullName !== null ? GithubConnection::current()?->access_token : null;
+
+        if ($fullName === null || $token === null) {
+            $this->shell->run($run, $step, ['git', 'push', '--set-upstream', $remote, $branch], $run->project->path);
+
+            return;
+        }
+
+        $this->pushWithToken($run, $step, $branch, $fullName, $token);
+    }
+
+    /**
+     * Projects registered from a GitHub repository have the credential
+     * stripped from their origin remote right after cloning (so the agent
+     * can never read it out of .git/config), so pushing needs it supplied
+     * again here instead - transiently, never written to disk.
+     *
+     * Pushes to an explicit URL built from the project's own full name, never
+     * to the "origin" remote name: the agent has shell access during the
+     * build/fix phases and could run `git remote set-url origin <anything>`,
+     * and an un-scoped credential would follow a rewritten remote anywhere.
+     * The header is also host-scoped (http.<url>.extraHeader, not
+     * http.extraHeader) as a second, independent guard against that same
+     * rewrite making the token leak to a different host. Runs through
+     * Shell::runRedacted(), not run(): the credential travels as a command
+     * argument, which run() would otherwise log in full as a visible
+     * pipeline.command event.
+     */
+    protected function pushWithToken(Run $run, RunStep $step, string $branch, string $fullName, string $token): void
+    {
+        $url = "https://github.com/{$fullName}.git";
+        $header = 'Authorization: Basic '.base64_encode("x-access-token:{$token}");
+
+        $this->shell->runRedacted(
+            $run,
+            $step,
+            [
+                'git',
+                '-c', 'credential.helper=',
+                '-c', "http.{$url}.extraHeader={$header}",
+                'push', '--set-upstream', $url, $branch,
+            ],
+            "git push --set-upstream {$url} {$branch}",
+            $run->project->path,
+        );
     }
 
     /**
@@ -217,9 +273,12 @@ class Worktree
     }
 
     /**
+     * The `-c user.name=`/`-c user.email=` flags every pipeline-authored
+     * commit uses, shared with the auto-merge step.
+     *
      * @return list<string>
      */
-    protected function authorFlags(): array
+    public function authorFlags(): array
     {
         $author = config('pipeline.commit_author');
         $flags = ['git'];

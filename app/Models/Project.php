@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $path
  * @property string $branch
  * @property string|null $remote
+ * @property string|null $github_full_name
  * @property array<string, string>|null $env_overrides
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $updated_at
@@ -23,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property-read int|null $error_count Aggregate, loaded with withCount()
  * @property-read string|null $runs_sum_cost_usd Aggregate, loaded with withSum()
  */
-#[Fillable(['name', 'path', 'branch', 'remote', 'env_overrides'])]
+#[Fillable(['name', 'path', 'branch', 'remote', 'github_full_name', 'env_overrides'])]
 class Project extends Model
 {
     /** @use HasFactory<ProjectFactory> */

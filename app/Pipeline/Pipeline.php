@@ -24,6 +24,7 @@ class Pipeline
 {
     public function __construct(
         protected Worktree $worktree,
+        protected BranchMerger $merger,
         protected ClaudeRunner $claude,
         protected CommandRunner $commands,
         protected Shell $shell,
@@ -216,6 +217,7 @@ class Pipeline
         if ($run->worktree_path !== null && is_dir($run->worktree_path)) {
             $this->attempt(fn () => $this->commit($run));
             $this->attempt(fn () => $this->push($run));
+            $this->attempt(fn () => $this->merge($run));
         }
 
         $this->attempt(fn () => $this->cleanup($run));
@@ -237,6 +239,31 @@ class Pipeline
             if (! $pushed) {
                 $step->status = StepStatus::Skipped;
                 $step->error = 'Project has no reachable remote';
+            }
+        });
+    }
+
+    /**
+     * Try to fold the pushed run branch straight into the project's base
+     * branch. Left skipped, never failed, when there was nothing to push or
+     * the merge conflicts: either way a human needs to look at it.
+     */
+    public function merge(Run $run): void
+    {
+        $this->step($run, Phase::Merge, 0, function (RunStep $step) use ($run) {
+            if (! $run->pushed) {
+                $step->status = StepStatus::Skipped;
+                $step->error = 'Branch was not pushed';
+
+                return;
+            }
+
+            $merged = $this->merger->merge($run, $step);
+            $run->forceFill(['merged' => $merged])->save();
+
+            if (! $merged) {
+                $step->status = StepStatus::Skipped;
+                $step->error = "Merge conflict with {$run->project->branch}; merge {$run->branch} manually";
             }
         });
     }

@@ -1,0 +1,57 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * Stand-in for `claude auth ...`, used only by ClaudeAuthenticatorTest. State
+ * (whether a login succeeded) lives in the JSON file at
+ * $FAKE_CLAUDE_AUTH_STATE: {"loggedIn": bool}. A login attempt succeeds once
+ * the pasted code equals $FAKE_CLAUDE_AUTH_CODE (default "right-code").
+ */
+
+$statePath = getenv('FAKE_CLAUDE_AUTH_STATE');
+$validCode = getenv('FAKE_CLAUDE_AUTH_CODE') ?: 'right-code';
+
+function readAuthState(string $path): array
+{
+    $decoded = is_file($path) ? json_decode(file_get_contents($path), true) : null;
+
+    return is_array($decoded) ? $decoded : ['loggedIn' => false];
+}
+
+function writeAuthState(string $path, array $state): void
+{
+    file_put_contents($path, json_encode($state));
+}
+
+$subcommand = $argv[2] ?? null;
+
+if ($subcommand === 'status') {
+    $loggedIn = readAuthState($statePath)['loggedIn'];
+    echo json_encode(['loggedIn' => $loggedIn, 'authMethod' => $loggedIn ? 'claudeai' : 'none']);
+    exit($loggedIn ? 0 : 1);
+}
+
+if ($subcommand === 'logout') {
+    writeAuthState($statePath, ['loggedIn' => false]);
+    exit(0);
+}
+
+if ($subcommand === 'login') {
+    echo "Opening browser to sign in…\n";
+    echo "If the browser didn't open, visit: https://example.test/fake-authorize\n";
+
+    while (($line = fgets(STDIN)) !== false) {
+        if (trim($line) === $validCode) {
+            writeAuthState($statePath, ['loggedIn' => true]);
+            echo "Signed in.\n";
+            exit(0);
+        }
+
+        echo "Invalid code. Please make sure the full code was copied.\n";
+    }
+
+    exit(1);
+}
+
+fwrite(STDERR, "fake-claude-auth: unknown subcommand [{$subcommand}]\n");
+exit(1);

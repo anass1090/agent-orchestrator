@@ -4,6 +4,7 @@ namespace App\Pipeline;
 
 use App\Models\Project;
 use Dotenv\Dotenv;
+use Illuminate\Support\Facades\File;
 
 class SubprocessEnvironment
 {
@@ -30,6 +31,7 @@ class SubprocessEnvironment
         }
 
         $environment['GIT_TERMINAL_PROMPT'] = '0';
+        $environment['COMPOSER_HOME'] = $this->composerHome();
 
         foreach ($this->overrides($project) as $key => $value) {
             $environment[$key] = (string) $value;
@@ -60,5 +62,23 @@ class SubprocessEnvironment
         }
 
         return array_keys(Dotenv::parse((string) file_get_contents($path)));
+    }
+
+    /**
+     * Composer refuses to run without COMPOSER_HOME or HOME. Under Sail,
+     * supervisord switches the PHP process to the "sail" user without giving
+     * it that user's HOME, leaving both unset. We only fill in COMPOSER_HOME,
+     * not HOME: Claude Code falls back to the OS user's home directory (via
+     * Node's os.homedir()) to find its login when HOME is unset, which is
+     * where `claude auth login` actually stored it — forcing HOME elsewhere
+     * would hide that login from every pipeline run.
+     */
+    protected function composerHome(): string
+    {
+        $path = storage_path('app/composer-home');
+
+        File::ensureDirectoryExists($path);
+
+        return $path;
     }
 }

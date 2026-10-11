@@ -34,6 +34,7 @@ class RunResource extends JsonResource
             'error' => $this->error,
             'branch' => $this->branch,
             'pushed' => $this->pushed,
+            'merged' => $this->merged,
             'model' => $this->model,
             'fix_attempts' => $this->fix_attempts,
             'max_fix_attempts' => (int) config('pipeline.max_fix_attempts'),

@@ -13,6 +13,7 @@ enum Phase: string
     case Fix = 'fix';
     case Commit = 'commit';
     case Push = 'push';
+    case Merge = 'merge';
     case Cleanup = 'cleanup';
 
     /**

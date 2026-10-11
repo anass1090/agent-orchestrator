@@ -17,14 +17,14 @@ use Throwable;
         '
             pipeline:phase
             {run : Het run-id}
-            {phase : setup, plan, build, checks, fixloop, commit, push, cleanup of finish}
+            {phase : setup, plan, build, checks, fixloop, commit, push, merge, cleanup of finish}
         '
     )]
 #[Description('Voer één fase van een bestaande run uit, om te debuggen')]
 class PipelinePhaseCommand extends Command
 {
     /** @var list<string> */
-    protected array $phases = ['setup', 'plan', 'build', 'checks', 'fixloop', 'commit', 'push', 'cleanup', 'finish'];
+    protected array $phases = ['setup', 'plan', 'build', 'checks', 'fixloop', 'commit', 'push', 'merge', 'cleanup', 'finish'];
 
     /**
      * Execute the console command.
@@ -98,6 +98,7 @@ class PipelinePhaseCommand extends Command
                 'fixloop' => $pipeline->fixLoop($run),
                 'commit' => $pipeline->commit($run),
                 'push' => $pipeline->push($run),
+                'merge' => $pipeline->merge($run),
                 'cleanup' => $pipeline->cleanup($run),
                 'finish' => $pipeline->finish($run),
             };

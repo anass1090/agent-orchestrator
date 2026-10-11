@@ -1,5 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import type { ReactNode } from 'react';
+import { index as connections } from '@/routes/connections';
 import { index as projects } from '@/routes/projects';
 import { index as runs } from '@/routes/runs';
 
@@ -22,6 +23,9 @@ export default function AppLayout({
                 </Link>
                 <Link href={projects()} className="hover:underline">
                     Projecten
+                </Link>
+                <Link href={connections()} className="hover:underline">
+                    Connections
                 </Link>
             </header>
 

@@ -1,5 +1,15 @@
 <?php
 
+use App\Http\Controllers\ClaudeLoginCodeController;
+use App\Http\Controllers\ClaudeLoginController;
+use App\Http\Controllers\ClaudeLogoutController;
+use App\Http\Controllers\ClaudeStatusController;
+use App\Http\Controllers\ConnectionsController;
+use App\Http\Controllers\GithubCallbackController;
+use App\Http\Controllers\GithubConnectController;
+use App\Http\Controllers\GithubCredentialsController;
+use App\Http\Controllers\GithubDisconnectController;
+use App\Http\Controllers\GithubRepositoriesController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\RunController;
 use App\Http\Controllers\RunEventPayloadController;
@@ -22,3 +32,17 @@ Route::get('/runs/{run}/files/{path}', RunFileController::class)->where('path', 
 
 Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
 Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+Route::post('/projects/from-github', [ProjectController::class, 'storeFromGithub'])->name('projects.store-from-github');
+
+Route::get('/claude/status', ClaudeStatusController::class)->name('claude.status');
+Route::post('/claude/login', ClaudeLoginController::class)->name('claude.login');
+Route::post('/claude/login/code', ClaudeLoginCodeController::class)->name('claude.login.code');
+Route::post('/claude/logout', ClaudeLogoutController::class)->name('claude.logout');
+
+Route::get('/connections', [ConnectionsController::class, 'index'])->name('connections.index');
+
+Route::post('/github/credentials', GithubCredentialsController::class)->name('github.credentials');
+Route::get('/github/connect', GithubConnectController::class)->name('github.connect');
+Route::get('/github/callback', GithubCallbackController::class)->name('github.callback');
+Route::post('/github/disconnect', GithubDisconnectController::class)->name('github.disconnect');
+Route::get('/github/repositories', GithubRepositoriesController::class)->name('github.repositories');

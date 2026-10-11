@@ -124,6 +124,11 @@ return [
     'storage_path' => env('PIPELINE_STORAGE_PATH', storage_path('app/runs')),
 
     /*
+     * Where a project registered from a GitHub repository gets cloned to.
+     */
+    'github_projects_path' => env('PIPELINE_GITHUB_PROJECTS_PATH', storage_path('app/github-projects')),
+
+    /*
      * Event payloads larger than this (bytes of JSON) are written to disk in
      * full; the database row keeps a copy with long strings truncated.
      */

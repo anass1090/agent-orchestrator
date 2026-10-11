@@ -58,22 +58,6 @@ afterEach(function () {
     File::deleteDirectory($this->tmp);
 });
 
-/**
- * Symfony Process only inherits variables present in both getenv() and $_SERVER.
- */
-function setProcessEnv(string $key, ?string $value): void
-{
-    if ($value === null) {
-        putenv($key);
-        unset($_SERVER[$key], $_ENV[$key]);
-
-        return;
-    }
-
-    putenv("{$key}={$value}");
-    $_SERVER[$key] = $_ENV[$key] = $value;
-}
-
 function runPipeline(Project $project, string $prompt = 'Voeg een feature toe'): Run
 {
     $pipeline = app(Pipeline::class);
@@ -91,6 +75,7 @@ it('runs plan, build and checks, then commits, pushes and removes the worktree',
         ->and($run->fix_attempts)->toBe(0)
         ->and($run->model)->toBe('fake-model')
         ->and($run->pushed)->toBeTrue()
+        ->and($run->merged)->toBeTrue()
         ->and($run->worktree_path)->toBeNull()
         ->and($run->input_tokens)->toBe(200)
         ->and($run->output_tokens)->toBe(100)
@@ -98,12 +83,15 @@ it('runs plan, build and checks, then commits, pushes and removes the worktree',
         ->and($run->duration_ms)->not->toBeNull();
 
     expect($run->steps()->orderBy('id')->pluck('phase')->map->value->all())
-        ->toBe(['setup', 'plan', 'build', 'pint', 'phpstan', 'tests', 'commit', 'push', 'cleanup']);
+        ->toBe(['setup', 'plan', 'build', 'pint', 'phpstan', 'tests', 'commit', 'push', 'merge', 'cleanup']);
 
     expect(is_dir($this->tmp.'/worktrees/demo-run-'.$run->id))->toBeFalse();
 
     $remoteFiles = Process::path($this->tmp.'/remote.git')->run(['git', 'ls-tree', '--name-only', '-r', $run->branch])->output();
     expect($remoteFiles)->toContain('plan.md', 'aannames.md', 'feature.txt');
+
+    $mainFiles = Process::path($this->tmp.'/remote.git')->run(['git', 'ls-tree', '--name-only', '-r', 'main'])->output();
+    expect($mainFiles)->toContain('plan.md', 'aannames.md', 'feature.txt');
 
     expect(File::get($run->storagePath('plan.md')))->toBe('# Plan');
 });
