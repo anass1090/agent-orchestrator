@@ -209,7 +209,7 @@ class Pipeline
     }
 
     /**
-     * Commit, push and remove the worktree. Each part is isolated so a failure
+     * Commit, push, and remove the worktree. Each part is isolated, so a failure
      * in one never prevents the worktree from being removed.
      */
     public function finish(Run $run): void

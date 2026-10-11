@@ -21,9 +21,12 @@ class BackgroundLauncher
         $log = $run->storagePath('console.log');
         File::ensureDirectoryExists(dirname($log));
 
-        $command = collect([config('pipeline.php_binary'), base_path('artisan'), ...$arguments, '--no-ansi', '--no-interaction'])
-            ->map(fn (string $part) => escapeshellarg($part))
-            ->implode(' ');
+        $command = collect([
+            config('pipeline.php_binary'),
+            base_path('artisan'), ...$arguments,
+            '--no-ansi',
+            '--no-interaction',
+        ])->map(fn (string $part) => escapeshellarg($part))->implode(' ');
 
         Process::path(base_path())
             ->timeout(10)

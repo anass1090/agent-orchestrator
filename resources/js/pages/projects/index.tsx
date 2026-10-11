@@ -134,7 +134,7 @@ export default function ProjectsIndex({ projects, github }: Props) {
                 </Table>
             )}
 
-            <h2 className="pt-4 text-xl font-semibold">Vanuit GitHub</h2>
+            <h2 className="pt-4 text-xl font-semibold">GitHub</h2>
             <GithubRegisterForm github={github} />
         </AppLayout>
     );
@@ -194,7 +194,7 @@ function GithubRegisterForm({ github }: { github: GithubConnection | null }) {
                 <Link href={connectionsIndex()} className="underline">
                     Connect GitHub
                 </Link>{' '}
-                om ook private repositories te kunnen registreren.
+                om repositories te kunnen registreren.
             </p>
         );
     }

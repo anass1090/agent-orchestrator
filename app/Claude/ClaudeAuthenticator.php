@@ -3,6 +3,7 @@
 namespace App\Claude;
 
 use App\Models\ClaudeLogin;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -116,6 +117,9 @@ class ClaudeAuthenticator
         return (int) trim($pid);
     }
 
+    /**
+     * @throws FileNotFoundException
+     */
     protected function captureAuthorizeUrl(string $logPath): string
     {
         $deadline = microtime(true) + 5;
