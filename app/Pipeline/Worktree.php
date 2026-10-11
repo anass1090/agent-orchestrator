@@ -61,7 +61,13 @@ class Worktree
     protected function addWorktree(Run $run, RunStep $step, string $path, string $branch): void
     {
         $project = $run->project;
-        $branchExists = $this->shell->run($run, $step, ['git', 'rev-parse', '--verify', '--quiet', "refs/heads/{$branch}"], $project->path, mustSucceed: false)->successful();
+        $branchExists = $this->shell->run(
+            $run,
+            $step,
+            ['git', 'rev-parse', '--verify', '--quiet', "refs/heads/{$branch}"],
+            $project->path,
+            mustSucceed: false
+        )->successful();
 
         if ($branchExists) {
             $this->shell->run($run, $step, ['git', 'worktree', 'add', $path, $branch], $project->path);
@@ -69,9 +75,97 @@ class Worktree
             return;
         }
 
-        $baseCommit = trim($this->shell->run($run, $step, ['git', 'rev-parse', $project->branch], $project->path)->output());
-        $this->shell->run($run, $step, ['git', 'worktree', 'add', '-b', $branch, $path, $baseCommit], $project->path);
+        $baseCommit = $this->resolveBaseCommit($run, $step);
+        $this->shell->run(
+            $run,
+            $step,
+            ['git', 'worktree', 'add', '-b', $branch, $path, $baseCommit],
+            $project->path
+        );
         $run->base_commit = $baseCommit;
+    }
+
+    /**
+     * Branch off the remote's latest base branch rather than whatever the
+     * project's clone last saw, unless the local branch is already ahead of
+     * it (e.g. a merge whose push failed), so local work is never dropped.
+     */
+    protected function resolveBaseCommit(Run $run, RunStep $step): string
+    {
+        $project = $run->project;
+        $localCommit = trim($this->shell->run(
+            $run,
+            $step,
+            ['git', 'rev-parse', $project->branch],
+            $project->path
+        )->output());
+        $remoteRef = $this->fetchBaseBranch($run, $step);
+
+        if ($remoteRef === null) {
+            return $localCommit;
+        }
+
+        $remoteCommit = trim($this->shell->run(
+            $run,
+            $step,
+            ['git', 'rev-parse', $remoteRef],
+            $project->path
+        )->output());
+        $localIsAhead = $this->shell->run(
+            $run,
+            $step,
+            ['git', 'merge-base', '--is-ancestor', $remoteCommit, $localCommit],
+            $project->path,
+            mustSucceed: false
+        )->successful();
+
+        return $localIsAhead ? $localCommit : $remoteCommit;
+    }
+
+    /**
+     * Best-effort: an unreachable remote, or one that doesn't have the base
+     * branch yet, falls back to the local branch instead of failing the run.
+     *
+     * @return string|null the fetched remote-tracking ref, or null when nothing was fetched
+     */
+    protected function fetchBaseBranch(Run $run, RunStep $step): ?string
+    {
+        $project = $run->project;
+        $remote = $project->remote;
+
+        if (! $remote || ! $this->shell->run(
+            $run,
+            $step,
+            ['git', 'remote', 'get-url', $remote],
+            $project->path,
+            mustSucceed: false
+        )->successful()) {
+            return null;
+        }
+
+        $remoteRef = "refs/remotes/{$remote}/{$project->branch}";
+        $refspec = "+refs/heads/{$project->branch}:{$remoteRef}";
+        $token = $this->githubToken($run);
+        $url = $this->githubUrl($run);
+
+        $fetched = $token === null
+            ? $this->shell->run(
+                $run,
+                $step,
+                ['git', 'fetch', '--quiet', $remote, $refspec],
+                $project->path,
+                mustSucceed: false
+            )
+            : $this->shell->runRedacted(
+                $run,
+                $step,
+                ['git', ...$this->tokenFlags($url, $token), 'fetch', '--quiet', $url, $refspec],
+                "git fetch {$url} {$refspec}",
+                $project->path,
+                mustSucceed: false,
+            );
+
+        return $fetched->successful() ? $remoteRef : null;
     }
 
     /**
@@ -89,7 +183,13 @@ class Worktree
         $path = (string) $run->worktree_path;
 
         if (is_dir($project->path.'/vendor') && ! is_dir($path.'/vendor')) {
-            $this->shell->run($run, $step, ['cp', '-a', '--reflink=auto', $project->path.'/vendor', $path.'/vendor'], $path, 'setup');
+            $this->shell->run(
+                $run,
+                $step,
+                ['cp', '-a', '--reflink=auto', $project->path.'/vendor', $path.'/vendor'],
+                $path,
+                'setup'
+            );
         }
 
         if (is_file($path.'/composer.json')) {
@@ -125,14 +225,25 @@ class Worktree
     {
         $this->shell->run($run, $step, ['git', 'add', '--all'], $path);
 
-        $hasChanges = ! $this->shell->run($run, $step, ['git', 'diff', '--cached', '--quiet'], $path, mustSucceed: false)->successful();
+        $hasChanges = ! $this->shell->run(
+            $run,
+            $step,
+            ['git', 'diff', '--cached', '--quiet'],
+            $path,
+            mustSucceed: false
+        )->successful();
 
         if (! $hasChanges) {
             return;
         }
 
         $message = sprintf("pipeline run #%d\n\n%s", $run->id, $run->prompt);
-        $this->shell->run($run, $step, [...$this->authorFlags(), 'commit', '--no-verify', '--quiet', '-m', $message], $path);
+        $this->shell->run(
+            $run,
+            $step,
+            [...$this->authorFlags(), 'commit', '--no-verify', '--quiet', '-m', $message],
+            $path
+        );
     }
 
     /**
@@ -140,10 +251,22 @@ class Worktree
      */
     protected function writeDiffArtifact(Run $run, RunStep $step, string $path, string $head): void
     {
-        $diff = $this->shell->run($run, $step, ['git', 'diff', '--binary', $run->base_commit, $head], $path, mustSucceed: false);
+        $diff = $this->shell->run(
+            $run,
+            $step,
+            ['git', 'diff', '--binary', $run->base_commit, $head],
+            $path,
+            mustSucceed: false
+        );
         File::ensureDirectoryExists($run->storagePath());
         File::put($run->storagePath('final.diff'), $diff->output());
-        $this->shell->run($run, $step, ['git', 'diff', '--stat', $run->base_commit, $head], $path, mustSucceed: false);
+        $this->shell->run(
+            $run,
+            $step,
+            ['git', 'diff', '--stat', $run->base_commit, $head],
+            $path,
+            mustSucceed: false
+        );
     }
 
     /**
@@ -157,7 +280,13 @@ class Worktree
             return false;
         }
 
-        $hasRemote = $this->shell->run($run, $step, ['git', 'remote', 'get-url', $remote], $run->project->path, mustSucceed: false)->successful();
+        $hasRemote = $this->shell->run(
+            $run,
+            $step,
+            ['git', 'remote', 'get-url', $remote],
+            $run->project->path,
+            mustSucceed: false
+        )->successful();
 
         if (! $hasRemote) {
             return false;
@@ -175,16 +304,20 @@ class Worktree
      */
     public function pushBranch(Run $run, RunStep $step, string $remote, string $branch): void
     {
-        $fullName = $run->project->github_full_name;
-        $token = $fullName !== null ? GithubConnection::current()?->access_token : null;
+        $token = $this->githubToken($run);
 
-        if ($fullName === null || $token === null) {
-            $this->shell->run($run, $step, ['git', 'push', '--set-upstream', $remote, $branch], $run->project->path);
+        if ($token === null) {
+            $this->shell->run(
+                $run,
+                $step,
+                ['git', 'push', '--set-upstream', $remote, $branch],
+                $run->project->path
+            );
 
             return;
         }
 
-        $this->pushWithToken($run, $step, $branch, $fullName, $token);
+        $this->pushWithToken($run, $step, $branch, $token);
     }
 
     /**
@@ -204,23 +337,41 @@ class Worktree
      * argument, which run() would otherwise log in full as a visible
      * pipeline.command event.
      */
-    protected function pushWithToken(Run $run, RunStep $step, string $branch, string $fullName, string $token): void
+    protected function pushWithToken(Run $run, RunStep $step, string $branch, string $token): void
     {
-        $url = "https://github.com/{$fullName}.git";
-        $header = 'Authorization: Basic '.base64_encode("x-access-token:{$token}");
+        $url = $this->githubUrl($run);
 
         $this->shell->runRedacted(
             $run,
             $step,
-            [
-                'git',
-                '-c', 'credential.helper=',
-                '-c', "http.{$url}.extraHeader={$header}",
-                'push', '--set-upstream', $url, $branch,
-            ],
+            ['git', ...$this->tokenFlags($url, $token), 'push', '--set-upstream', $url, $branch],
             "git push --set-upstream {$url} {$branch}",
             $run->project->path,
         );
+    }
+
+    /**
+     * The GitHub token to push/fetch with, or null for projects not sourced
+     * from GitHub (or when no account is connected).
+     */
+    protected function githubToken(Run $run): ?string
+    {
+        return $run->project->github_full_name !== null ? GithubConnection::current()?->access_token : null;
+    }
+
+    protected function githubUrl(Run $run): string
+    {
+        return "https://github.com/{$run->project->github_full_name}.git";
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function tokenFlags(string $url, string $token): array
+    {
+        $header = 'Authorization: Basic '.base64_encode("x-access-token:{$token}");
+
+        return ['-c', 'credential.helper=', '-c', "http.{$url}.extraHeader={$header}"];
     }
 
     /**
@@ -232,7 +383,13 @@ class Worktree
         $projectPath = $run->project->path;
 
         if ($path !== '' && is_dir($path)) {
-            $removed = $this->shell->run($run, $step, ['git', 'worktree', 'remove', '--force', '--force', $path], $projectPath, mustSucceed: false)->successful();
+            $removed = $this->shell->run(
+                $run,
+                $step,
+                ['git', 'worktree', 'remove', '--force', '--force', $path],
+                $projectPath,
+                mustSucceed: false
+            )->successful();
 
             if (! $removed && $path === $this->pathFor($run)) {
                 File::deleteDirectory($path);
@@ -251,7 +408,10 @@ class Worktree
     {
         $project = $run->project;
         $path = (string) $run->worktree_path;
-        $source = collect([$project->path.'/.env', $path.'/.env.example'])->first(fn (string $file) => is_file($file));
+        $source = collect([
+            $project->path.'/.env',
+            $path.'/.env.example',
+        ])->first(fn (string $file) => is_file($file));
 
         if ($source === null) {
             return;
@@ -262,13 +422,21 @@ class Worktree
         foreach ($this->environment->overrides($project) as $key => $value) {
             $line = $key.'='.$value;
             $pattern = '/^'.preg_quote($key, '/').'=.*$/m';
-            $contents = preg_match($pattern, $contents) ? (string) preg_replace($pattern, $line, $contents) : rtrim($contents)."\n".$line."\n";
+            $contents = preg_match($pattern, $contents)
+                ? (string) preg_replace($pattern, $line, $contents)
+                : rtrim($contents)."\n".$line."\n";
         }
 
         File::put($path.'/.env', $contents);
 
         if (is_file($path.'/artisan') && preg_match('/^APP_KEY=\s*$/m', $contents)) {
-            $this->shell->run($run, $step, ['php', 'artisan', 'key:generate', '--force', '--no-interaction'], $path, 'setup');
+            $this->shell->run(
+                $run,
+                $step,
+                ['php', 'artisan', 'key:generate', '--force', '--no-interaction'],
+                $path,
+                'setup'
+            );
         }
     }
 

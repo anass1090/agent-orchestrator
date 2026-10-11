@@ -56,7 +56,7 @@ class Shell
      *
      * @throws CommandFailed
      */
-    public function runRedacted(Run $run, RunStep $step, array $command, string $description, string $cwd, string $timeout = 'git'): ProcessResult
+    public function runRedacted(Run $run, RunStep $step, array $command, string $description, string $cwd, string $timeout = 'git', bool $mustSucceed = true): ProcessResult
     {
         $result = $this->commands->run($command, $cwd, (int) config("pipeline.timeouts.{$timeout}"), $run->project);
 
@@ -64,7 +64,7 @@ class Shell
             sprintf('$ %s → exit %d', $description, $result->exitCode()),
         );
 
-        if (! $result->successful()) {
+        if ($mustSucceed && ! $result->successful()) {
             throw new CommandFailed(sprintf('`%s` failed with exit %d', $description, $result->exitCode()));
         }
 
