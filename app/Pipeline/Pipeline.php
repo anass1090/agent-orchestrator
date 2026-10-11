@@ -33,12 +33,21 @@ class Pipeline
         protected FailureFingerprint $fingerprints,
     ) {}
 
+    /**
+     * Storage is keyed by run id, which starts over after a database reset,
+     * so whatever an older run with the same id left behind (plan.md,
+     * console.log, streams) is cleared rather than shown as this run's.
+     */
     public function start(Project $project, string $prompt): Run
     {
-        return $project->runs()->create([
+        $run = $project->runs()->create([
             'prompt' => $prompt,
             'status' => RunStatus::Pending,
         ]);
+
+        File::deleteDirectory($run->storagePath());
+
+        return $run;
     }
 
     /**
@@ -119,18 +128,20 @@ class Pipeline
         $result = $this->agent($run, Phase::Plan, 0, $this->prompts->user(Phase::Plan, ['feature' => $run->prompt]));
         $run->forceFill(['plan_session_id' => $result->sessionId])->save();
 
-        $path = (string) $run->worktree_path;
-        $missing = array_filter(['plan.md', 'aannames.md'], fn (string $file) => ! is_file("{$path}/{$file}"));
+        $planDirectory = $run->worktree_path.'/'.Worktree::PLAN_DIRECTORY;
+        $missing = array_filter(['plan.md', 'aannames.md'], fn (string $file) => ! is_file("{$planDirectory}/{$file}"));
 
         foreach (['plan.md', 'aannames.md'] as $file) {
-            if (is_file("{$path}/{$file}")) {
+            if (is_file("{$planDirectory}/{$file}")) {
                 File::ensureDirectoryExists($run->storagePath());
-                File::copy("{$path}/{$file}", $run->storagePath($file));
+                File::copy("{$planDirectory}/{$file}", $run->storagePath($file));
             }
         }
 
         if ($missing !== []) {
-            throw new PhaseFailed('Plan phase did not produce: '.implode(', ', $missing), 'plan_missing');
+            $paths = array_map(fn (string $file) => Worktree::PLAN_DIRECTORY.'/'.$file, $missing);
+
+            throw new PhaseFailed('Plan phase did not produce: '.implode(', ', $paths), 'plan_missing');
         }
 
         $this->warnAboutCodeWrittenDuringPlan($run);
@@ -480,12 +491,11 @@ class Pipeline
         $changed = collect(explode("\n", trim($status->output())))
             ->filter()
             ->map(fn (string $line) => trim(substr($line, 3)))
-            ->reject(fn (string $file) => in_array($file, ['plan.md', 'aannames.md'], true))
             ->values();
 
         if ($changed->isNotEmpty()) {
             $this->recorder->record($run, Phase::Plan, null, 'pipeline.warning', null,
-                'Plan phase changed '.$changed->count().' file(s) besides plan.md/aannames.md',
+                'Plan phase changed '.$changed->count().' file(s) besides its plan',
                 ['files' => $changed->all()],
             );
         }

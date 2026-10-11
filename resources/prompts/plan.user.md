@@ -2,4 +2,4 @@ Featureverzoek:
 
 {{feature}}
 
-Schrijf `plan.md` en `aannames.md` in de root van het project. Schrijf nog geen code.
+Schrijf `.pipeline/plan.md` en `.pipeline/aannames.md`. Schrijf nog geen code.

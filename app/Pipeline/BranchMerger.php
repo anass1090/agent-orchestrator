@@ -4,6 +4,7 @@ namespace App\Pipeline;
 
 use App\Models\Run;
 use App\Models\RunStep;
+use Illuminate\Support\Facades\File;
 
 /**
  * After a run's branch has been pushed, tries to merge it straight into the
@@ -32,7 +33,8 @@ class BranchMerger
         }
 
         $result = $this->shell->run($run, $step, [
-            ...$this->worktree->authorFlags(), 'merge', '--no-ff', '-m', "Merge {$branch} into {$base}", $branch,
+            ...$this->worktree->authorFlags(), 'merge', '--no-ff', '--cleanup=whitespace',
+            '-m', "Merge {$branch} into {$base}", '-m', $this->messageBody($run), $branch,
         ], $path, mustSucceed: false);
 
         if (! $result->successful()) {
@@ -48,6 +50,24 @@ class BranchMerger
         }
 
         return true;
+    }
+
+    /**
+     * The request and the plan, since the plan files themselves are never
+     * committed: this keeps them readable from `git log` on the base branch.
+     * Whitespace cleanup keeps the markdown headings, which the default
+     * cleanup would strip as comment lines.
+     */
+    protected function messageBody(Run $run): string
+    {
+        $body = "Run #{$run->id}: {$run->prompt}";
+        $planPath = $run->storagePath('plan.md');
+
+        if (File::exists($planPath)) {
+            $body .= "\n\n## Plan\n\n".trim(File::get($planPath));
+        }
+
+        return $body;
     }
 
     /**

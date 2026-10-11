@@ -1,4 +1,4 @@
-Voer `plan.md` uit.
+Voer `.pipeline/plan.md` uit.
 
 Het oorspronkelijke featureverzoek, ter referentie:
 

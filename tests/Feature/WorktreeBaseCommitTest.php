@@ -97,3 +97,15 @@ it('fetches github projects from an explicit url without recording the token', f
             ->and(json_encode($event->payload))->not->toContain('gho_supersecrettoken');
     }
 });
+
+it('never re-attaches a branch an earlier run with the same id left behind', function () {
+    ($this->git)($this->tmp.'/project', 'branch', 'pipeline/run-'.$this->run->id);
+    ($this->git)($this->tmp.'/project', 'checkout', '--quiet', 'pipeline/run-'.$this->run->id);
+    ($this->commit)($this->tmp.'/project', 'stale.txt');
+    ($this->git)($this->tmp.'/project', 'checkout', '--quiet', 'main');
+
+    app(Worktree::class)->create($this->run, $this->step);
+
+    expect($this->run->refresh()->branch)->not->toBe('pipeline/run-'.$this->run->id)
+        ->and(is_file($this->run->worktree_path.'/stale.txt'))->toBeFalse();
+});

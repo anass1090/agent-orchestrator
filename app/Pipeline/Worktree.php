@@ -14,6 +14,12 @@ use RuntimeException;
  */
 class Worktree
 {
+    /**
+     * Where the plan phase writes plan.md/aannames.md inside the worktree.
+     * Git-ignored, so the plan never ends up in the target repository.
+     */
+    public const PLAN_DIRECTORY = '.pipeline';
+
     public function __construct(
         protected Shell $shell,
         protected SubprocessEnvironment $environment,
@@ -23,12 +29,22 @@ class Worktree
     {
         $root = config('pipeline.worktree_path') ?: dirname($run->project->path).'/.pipeline-worktrees';
 
-        return rtrim($root, '/').'/'.$run->project->name.'-run-'.$run->id;
+        return rtrim($root, '/').'/'.$run->project->name.'-'.$this->slugFor($run);
     }
 
     public function branchFor(Run $run): string
     {
-        return config('pipeline.branch_prefix').'run-'.$run->id;
+        return config('pipeline.branch_prefix').$this->slugFor($run);
+    }
+
+    /**
+     * Run ids start over after a database reset, so the id alone would let a
+     * new run re-attach an old run's branch (or collide with its leftover
+     * worktree). The creation time keeps the name unique and still derivable.
+     */
+    protected function slugFor(Run $run): string
+    {
+        return 'run-'.$run->id.'-'.$run->created_at?->format('ymdHis');
     }
 
     /**
@@ -41,6 +57,7 @@ class Worktree
 
         $this->ensurePathIsFree($path);
         $this->addWorktree($run, $step, $path, $branch);
+        $this->excludePlanDirectory($run, $step);
 
         $run->forceFill(['branch' => $branch, 'worktree_path' => $path])->save();
     }
@@ -52,6 +69,32 @@ class Worktree
         }
 
         File::ensureDirectoryExists(dirname($path));
+    }
+
+    /**
+     * Ignores the plan directory through the repository's own
+     * .git/info/exclude (shared by all its worktrees), so nothing is added to
+     * the project itself and `git add --all` never picks the plan up.
+     */
+    protected function excludePlanDirectory(Run $run, RunStep $step): void
+    {
+        $projectPath = $run->project->path;
+        $commonDirectory = trim($this->shell->run($run, $step, ['git', 'rev-parse', '--git-common-dir'], $projectPath)->output());
+
+        if (! str_starts_with($commonDirectory, '/')) {
+            $commonDirectory = $projectPath.'/'.$commonDirectory;
+        }
+
+        $excludeFile = $commonDirectory.'/info/exclude';
+        $pattern = '/'.self::PLAN_DIRECTORY.'/';
+        $contents = File::exists($excludeFile) ? File::get($excludeFile) : '';
+
+        if (in_array($pattern, array_map('trim', explode("\n", $contents)), true)) {
+            return;
+        }
+
+        File::ensureDirectoryExists(dirname($excludeFile));
+        File::put($excludeFile, rtrim($contents, "\n").($contents === '' ? '' : "\n").$pattern."\n");
     }
 
     /**

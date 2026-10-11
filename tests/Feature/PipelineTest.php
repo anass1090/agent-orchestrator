@@ -6,6 +6,7 @@ use App\Enums\StepStatus;
 use App\Models\Project;
 use App\Models\Run;
 use App\Pipeline\Pipeline;
+use App\Pipeline\Worktree;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -49,7 +50,7 @@ beforeEach(function () {
         file($this->tmp.'/calls.jsonl', FILE_IGNORE_NEW_LINES) ?: [],
     );
 
-    $this->plan = ['write' => ['plan.md' => '# Plan', 'aannames.md' => '# Aannames']];
+    $this->plan = ['write' => ['.pipeline/plan.md' => '# Plan', '.pipeline/aannames.md' => '# Aannames']];
 });
 
 afterEach(function () {
@@ -85,13 +86,16 @@ it('runs plan, build and checks, then commits, pushes and removes the worktree',
     expect($run->steps()->orderBy('id')->pluck('phase')->map->value->all())
         ->toBe(['setup', 'plan', 'build', 'pint', 'phpstan', 'tests', 'commit', 'push', 'merge', 'cleanup']);
 
-    expect(is_dir($this->tmp.'/worktrees/demo-run-'.$run->id))->toBeFalse();
+    expect(is_dir(app(Worktree::class)->pathFor($run)))->toBeFalse();
 
     $remoteFiles = Process::path($this->tmp.'/remote.git')->run(['git', 'ls-tree', '--name-only', '-r', $run->branch])->output();
-    expect($remoteFiles)->toContain('plan.md', 'aannames.md', 'feature.txt');
+    expect($remoteFiles)->toContain('feature.txt')->not->toContain('plan.md', 'aannames.md');
 
     $mainFiles = Process::path($this->tmp.'/remote.git')->run(['git', 'ls-tree', '--name-only', '-r', 'main'])->output();
-    expect($mainFiles)->toContain('plan.md', 'aannames.md', 'feature.txt');
+    expect($mainFiles)->toContain('feature.txt')->not->toContain('plan.md', 'aannames.md');
+
+    $mergeMessage = Process::path($this->tmp.'/remote.git')->run(['git', 'log', '-1', '--format=%B', 'main'])->output();
+    expect($mergeMessage)->toContain("Run #{$run->id}: Voeg een feature toe", "## Plan\n\n# Plan");
 
     expect(File::get($run->storagePath('plan.md')))->toBe('# Plan');
 });
@@ -105,7 +109,7 @@ it('records readable tool events with a gapless sequence', function () {
     expect($sequences)->toBe(range(1, count($sequences)));
 
     expect($run->events()->where('type', 'tool_use')->where('phase', 'plan')->pluck('summary')->all())
-        ->toBe(['Write plan.md', 'Write aannames.md']);
+        ->toBe(['Write .pipeline/plan.md', 'Write .pipeline/aannames.md']);
 
     expect($run->events()->where('type', 'tool_result')->first())
         ->tool->toBe('Write')
@@ -176,11 +180,11 @@ it('treats a non-zero exit as an error without trusting stdout, and still cleans
         ->and($plan->status)->toBe(StepStatus::Error)
         ->and($plan->exit_code)->toBe(1)
         ->and($run->worktree_path)->toBeNull()
-        ->and(is_dir($this->tmp.'/worktrees/demo-run-'.$run->id))->toBeFalse();
+        ->and(is_dir(app(Worktree::class)->pathFor($run)))->toBeFalse();
 });
 
 it('treats a clean exit without a result event as an error', function () {
-    ($this->scenario)([['write' => ['plan.md' => 'x'], 'no_result' => true]]);
+    ($this->scenario)([['write' => ['.pipeline/plan.md' => 'x'], 'no_result' => true]]);
 
     $run = runPipeline($this->project);
 
@@ -189,7 +193,7 @@ it('treats a clean exit without a result event as an error', function () {
 });
 
 it('fails the run when the plan phase does not write both files', function () {
-    ($this->scenario)([['write' => ['plan.md' => '# Plan', 'app/Code.php' => '<?php']]]);
+    ($this->scenario)([['write' => ['.pipeline/plan.md' => '# Plan', 'app/Code.php' => '<?php']]]);
 
     $run = runPipeline($this->project);
 
@@ -199,7 +203,7 @@ it('fails the run when the plan phase does not write both files', function () {
 });
 
 it('warns when the plan phase writes code', function () {
-    ($this->scenario)([['write' => ['plan.md' => '#', 'aannames.md' => '#', 'app/Code.php' => '<?php']], ['write' => ['feature.txt' => 'x']]]);
+    ($this->scenario)([['write' => ['.pipeline/plan.md' => '#', '.pipeline/aannames.md' => '#', 'app/Code.php' => '<?php']], ['write' => ['feature.txt' => 'x']]]);
 
     $run = runPipeline($this->project);
 
@@ -221,10 +225,10 @@ it('never passes the API key or the orchestrator database to the agent', functio
 
 it('stores oversized payloads on disk and a truncated copy in the database', function () {
     config(['pipeline.payload_max_bytes' => 2000]);
-    ($this->scenario)([['write' => ['plan.md' => str_repeat('x', 5000), 'aannames.md' => '#']], ['write' => ['feature.txt' => 'x']]]);
+    ($this->scenario)([['write' => ['.pipeline/plan.md' => str_repeat('x', 5000), '.pipeline/aannames.md' => '#']], ['write' => ['feature.txt' => 'x']]]);
 
     $run = runPipeline($this->project);
-    $event = $run->events()->where('type', 'tool_use')->where('summary', 'Write plan.md')->first();
+    $event = $run->events()->where('type', 'tool_use')->where('summary', 'Write .pipeline/plan.md')->first();
 
     expect($event->payload_path)->not->toBeNull()
         ->and($event->payload['_truncated'])->toBeTrue()
@@ -239,9 +243,23 @@ it('can stop after the plan phase and keep the worktree for debugging', function
     $run = $pipeline->execute($pipeline->start($this->project, 'x'), Phase::Plan, keepWorktree: true)->refresh();
 
     expect($run->status)->toBe(RunStatus::Paused)
-        ->and(is_file($run->worktree_path.'/plan.md'))->toBeTrue();
+        ->and(is_file($run->worktree_path.'/.pipeline/plan.md'))->toBeTrue();
 
     $pipeline->finish($run);
 
     expect($run->refresh()->worktree_path)->toBeNull();
+});
+
+it('starts a run without files an earlier run with the same id left behind', function () {
+    $pipeline = app(Pipeline::class);
+    $nextId = $pipeline->start($this->project, 'Eerste')->id + 1;
+
+    $staleDirectory = config('pipeline.storage_path').'/'.$nextId;
+    File::ensureDirectoryExists($staleDirectory);
+    File::put($staleDirectory.'/plan.md', '# Oud plan');
+
+    $run = $pipeline->start($this->project, 'Tweede');
+
+    expect($run->id)->toBe($nextId)
+        ->and(File::exists($run->storagePath('plan.md')))->toBeFalse();
 });
