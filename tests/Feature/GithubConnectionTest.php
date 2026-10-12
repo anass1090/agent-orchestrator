@@ -75,6 +75,19 @@ it('refuses to list repositories when not connected', function () {
     $this->get('/github/repositories')->assertStatus(409);
 });
 
+it('disconnects and reports not-connected when the stored token was revoked on github\'s side', function () {
+    GithubConnection::create(['access_token' => 'gho_faketoken', 'username' => 'octocat']);
+
+    Http::fake([
+        'api.github.com/user/repos*' => Http::response(['message' => 'Bad credentials'], 401),
+    ]);
+
+    $response = $this->get('/github/repositories');
+
+    $response->assertStatus(409);
+    expect(GithubConnection::summary())->toBeNull();
+});
+
 it('lists the connected account\'s repositories, including private ones', function () {
     GithubConnection::create(['access_token' => 'gho_faketoken', 'username' => 'octocat']);
 

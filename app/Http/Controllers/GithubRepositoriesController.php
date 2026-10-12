@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\GitHub\GithubRepositoryClient;
 use App\Models\GithubConnection;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\JsonResponse;
 
 /**
@@ -20,6 +21,18 @@ class GithubRepositoriesController extends Controller
             return response()->json(['message' => 'GitHub is niet verbonden.'], 409);
         }
 
-        return response()->json($client->list($connection->access_token));
+        try {
+            return response()->json($client->list($connection->access_token));
+        } catch (RequestException $exception) {
+            if ($exception->response->status() !== 401) {
+                throw $exception;
+            }
+
+            // The token was revoked or expired on GitHub's side: treat it the
+            // same as never having connected, instead of a 500.
+            $connection->disconnect();
+
+            return response()->json(['message' => 'GitHub is niet verbonden.'], 409);
+        }
     }
 }

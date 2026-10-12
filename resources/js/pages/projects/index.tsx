@@ -154,10 +154,23 @@ function GithubRegisterForm({ github }: { github: GithubConnection | null }) {
         fetch(repositoriesRoute.url(), {
             headers: { Accept: 'application/json' },
         })
-            .then((response) => response.json())
-            .then(setRepositories)
-            .catch(() =>
-                setLoadError('Repositories konden niet geladen worden.'),
+            .then(async (response) => {
+                const body = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        body?.message ??
+                            'Repositories konden niet geladen worden.',
+                    );
+                }
+
+                setRepositories(body);
+            })
+            .catch((error: Error) =>
+                setLoadError(
+                    error.message ||
+                        'Repositories konden niet geladen worden.',
+                ),
             );
     }, [github]);
 
