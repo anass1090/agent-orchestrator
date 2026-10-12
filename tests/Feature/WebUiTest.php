@@ -108,7 +108,7 @@ it('launches the real detached command', function () {
         && str_ends_with($process->command, '< /dev/null &'));
 });
 
-it('shows a run with its steps, events and rendered plan', function () {
+it('shows a run with its steps, events and stored files', function () {
     $run = finishedRun();
 
     $this->get(route('runs.show', $run))
@@ -122,8 +122,6 @@ it('shows a run with its steps, events and rendered plan', function () {
             ->where('events.1.summary', 'tests failed (exit 1)')
             ->where('events.1.kind', 'check-failed')
             ->where('lastSequence', 3)
-            ->where('documents.0.label', 'Plan')
-            ->where('documents.0.html', fn (string $html) => str_contains($html, '<h1>Het plan</h1>') && ! str_contains($html, '<script>'))
             ->where('files.0.path', 'checks/0-tests.log'));
 });
 

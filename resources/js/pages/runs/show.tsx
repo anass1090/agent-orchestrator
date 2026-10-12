@@ -26,7 +26,6 @@ type Props = {
     run: Run;
     events: RunEvent[];
     lastSequence: number;
-    documents: { label: string; html: string }[];
     files: { path: string; url: string }[];
 };
 
@@ -36,7 +35,7 @@ type Live = { base: RunEvent[]; run: Run; events: RunEvent[] };
 const ALL = 'all';
 
 export default function RunShow(props: Props) {
-    const { documents, files } = props;
+    const { files } = props;
     const [live, setLive] = useState<Live | null>(null);
     const [activePhase, setActivePhase] = useState<string | null>(null);
 
@@ -208,21 +207,6 @@ export default function RunShow(props: Props) {
 
                     <h2 className="pt-3 text-xl font-semibold">Fases</h2>
                     <Steps steps={run.steps} />
-
-                    {documents.map((document) => (
-                        <div key={document.label} className="space-y-2 pt-3">
-                            <h2 className="text-xl font-semibold">
-                                {document.label}
-                            </h2>
-                            <div
-                                className="text-sm [&_code]:font-mono [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-5"
-                                // Rendered server-side with HTML input escaped.
-                                dangerouslySetInnerHTML={{
-                                    __html: document.html,
-                                }}
-                            />
-                        </div>
-                    ))}
 
                     {files.length > 0 && (
                         <>

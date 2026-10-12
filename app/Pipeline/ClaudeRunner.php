@@ -6,8 +6,6 @@ use App\Enums\Phase;
 use App\Models\Run;
 use App\Models\RunStep;
 use Closure;
-use Illuminate\Support\Facades\File;
-use RuntimeException;
 
 /**
  * Runs Claude Code headless with stream-json output and records every event
@@ -24,7 +22,6 @@ class ClaudeRunner
     {
         $parser = new StreamJsonParser;
         $summarizer = new EventSummarizer((string) $run->worktree_path);
-        $raw = $this->openRawLog($run, $phase, $step);
 
         $sessionId = null;
         $model = null;
@@ -33,49 +30,19 @@ class ClaudeRunner
 
         $handle = $this->messageHandler($run, $step, $phase, $summarizer, $sessionId, $model, $resultEvent);
 
-        try {
-            $result = $this->commands->run(
-                $this->command($prompt, $systemPrompt, $resumeSessionId),
-                (string) $run->worktree_path,
-                (int) config("pipeline.timeouts.{$phase->value}"),
-                $run->project,
-                $this->outputHandler($parser, $handle, $raw, $stderr),
-            );
+        $result = $this->commands->run(
+            $this->command($prompt, $systemPrompt, $resumeSessionId),
+            (string) $run->worktree_path,
+            (int) config("pipeline.timeouts.{$phase->value}"),
+            $run->project,
+            $this->outputHandler($parser, $handle, $stderr),
+        );
 
-            foreach ($parser->flush() as $message) {
-                $handle($message);
-            }
-        } finally {
-            fclose($raw);
-            $this->persistStderr($run, $phase, $step, $stderr);
+        foreach ($parser->flush() as $message) {
+            $handle($message);
         }
 
         return new ClaudeResult($result->exitCode() ?? -1, $sessionId, $model, $resultEvent, $stderr);
-    }
-
-    /**
-     * Open the file every raw stream-json line is appended to, for debugging.
-     *
-     * @return resource
-     */
-    protected function openRawLog(Run $run, Phase $phase, RunStep $step)
-    {
-        $rawPath = $run->storagePath("streams/{$phase->value}-{$step->attempt}.jsonl");
-        File::ensureDirectoryExists(dirname($rawPath));
-        $raw = fopen($rawPath, 'ab');
-
-        if ($raw === false) {
-            throw new RuntimeException("Cannot open [{$rawPath}] for writing.");
-        }
-
-        return $raw;
-    }
-
-    protected function persistStderr(Run $run, Phase $phase, RunStep $step, string $stderr): void
-    {
-        if ($stderr !== '') {
-            File::put($run->storagePath("streams/{$phase->value}-{$step->attempt}.stderr"), $stderr);
-        }
     }
 
     /**
@@ -105,20 +72,16 @@ class ClaudeRunner
 
     /**
      * Builds the callback that routes a subprocess output chunk: stderr is
-     * buffered, stdout is appended to the raw log and fed to the parser.
-     *
-     * @param  resource  $raw
+     * buffered, stdout is fed to the stream-json parser.
      */
-    protected function outputHandler(StreamJsonParser $parser, Closure $handle, $raw, string &$stderr): Closure
+    protected function outputHandler(StreamJsonParser $parser, Closure $handle, string &$stderr): Closure
     {
-        return function (string $type, string $output) use ($parser, $handle, $raw, &$stderr): void {
+        return function (string $type, string $output) use ($parser, $handle, &$stderr): void {
             if ($type === 'err') {
                 $stderr .= $output;
 
                 return;
             }
-
-            fwrite($raw, $output);
 
             foreach ($parser->feed($output) as $message) {
                 $handle($message);

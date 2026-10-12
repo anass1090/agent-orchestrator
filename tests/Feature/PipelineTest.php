@@ -165,7 +165,7 @@ it('records a missing check tool as a failed check', function () {
 
     expect($run->failed_check)->toBe('phpstan')
         ->and($run->stop_reason)->toBe('repeated_failure')
-        ->and(File::get($run->steps()->where('phase', Phase::Phpstan)->first()->output_path))->toContain('Tool ontbreekt');
+        ->and($run->events()->where('type', 'check.result')->latest('sequence')->first()->payload['output'])->toContain('Tool ontbreekt');
 });
 
 it('treats a non-zero exit as an error without trusting stdout, and still cleans up', function () {

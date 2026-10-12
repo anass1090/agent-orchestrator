@@ -14,7 +14,6 @@ use App\Pipeline\Reporters\EventFormatter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Throwable;
@@ -84,26 +83,8 @@ class RunController extends Controller
             'run' => RunResource::make($run)->resolve(),
             'events' => RunEventResource::collection($events)->resolve(),
             'lastSequence' => (int) $run->events()->max('sequence'),
-            'documents' => $this->documents($run),
             'files' => $this->files($run),
         ]);
-    }
-
-    /**
-     * The agent's plan and assumptions, as copied at the end of the plan phase,
-     * rendered to HTML with any HTML in the markdown escaped.
-     *
-     * @return list<array{label: string, html: string}>
-     */
-    protected function documents(Run $run): array
-    {
-        return array_values(collect(['plan.md' => 'Plan', 'aannames.md' => 'Aannames'])
-            ->filter(fn (string $label, string $file) => File::exists($run->storagePath($file)))
-            ->map(fn (string $label, string $file) => [
-                'label' => $label,
-                'html' => Str::markdown(File::get($run->storagePath($file)), ['html_input' => 'escape', 'allow_unsafe_links' => false]),
-            ])
-            ->all());
     }
 
     /**

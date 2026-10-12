@@ -428,24 +428,20 @@ class Pipeline
     }
 
     /**
-     * Persist the check's log and fingerprint, update the step and record the
-     * event, then build the outcome every caller acts on.
+     * Persist the check's fingerprint, update the step and record the event
+     * (which keeps the check's own output, up to a length), then build the
+     * outcome every caller acts on.
      *
      * @param  list<string>  $command
      */
     protected function recordCheckOutcome(Run $run, RunStep $step, Phase $check, string $path, array $command, ?int $exitCode, string $output): CheckOutcome
     {
         $passed = $exitCode === 0;
-        $logPath = $run->storagePath("checks/{$step->attempt}-{$check->value}.log");
-        File::ensureDirectoryExists(dirname($logPath));
-        File::put($logPath, $output);
-
         $fingerprint = $passed ? null : $this->fingerprints->make($check->value, $output, $path);
 
         $step->fill([
             'status' => $passed ? StepStatus::Succeeded : StepStatus::Failed,
             'exit_code' => $exitCode,
-            'output_path' => $logPath,
             'fingerprint' => $fingerprint,
         ]);
 
