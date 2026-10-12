@@ -3,9 +3,7 @@ import type { FormEvent } from 'react';
 import { useEffect } from 'react';
 import StatusBadge from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
     Select,
     SelectContent,
@@ -23,7 +21,6 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import AppLayout from '@/layouts/app-layout';
-import { usd } from '@/lib/format';
 import { index as projectsIndex } from '@/routes/projects';
 import { destroy, index, show, store } from '@/routes/runs';
 import type { Paginated, Run } from '@/types';
@@ -135,13 +132,7 @@ export default function RunsIndex({
                                 <TableHead>Project</TableHead>
                                 <TableHead>Status</TableHead>
                                 <TableHead className="text-right">
-                                    Fixes
-                                </TableHead>
-                                <TableHead className="text-right">
                                     Duur
-                                </TableHead>
-                                <TableHead className="text-right">
-                                    Kosten
                                 </TableHead>
                                 <TableHead>Gestart</TableHead>
                                 <TableHead />
@@ -176,13 +167,7 @@ export default function RunsIndex({
                                         )}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                        {run.fix_attempts}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
                                         {run.duration}
-                                    </TableCell>
-                                    <TableCell className="text-right tabular-nums">
-                                        {usd(run.cost_usd)}
                                     </TableCell>
                                     <TableCell>{run.created_at}</TableCell>
                                     <TableCell className="text-right">
@@ -236,19 +221,13 @@ function NewRunForm({
     projects: { id: number; name: string }[];
     selected: number | null;
 }) {
-    const { data, setData, transform, submit, processing, errors } = useForm({
+    const { data, setData, submit, processing, errors } = useForm({
         project_id: String(selected ?? projects[0].id),
         prompt: '',
-        until: 'end',
-        keep_worktree: false,
     });
 
     const onSubmit = (event: FormEvent) => {
         event.preventDefault();
-        transform((form) => ({
-            ...form,
-            until: form.until === 'end' ? '' : form.until,
-        }));
         submit(store());
     };
 
@@ -294,39 +273,6 @@ function NewRunForm({
                 {errors.prompt && (
                     <p className="text-sm text-destructive">{errors.prompt}</p>
                 )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-                <span>Uitvoeren tot:</span>
-                <RadioGroup
-                    value={data.until}
-                    onValueChange={(value) => setData('until', value)}
-                    className="flex gap-4"
-                >
-                    {[
-                        ['end', 'einde'],
-                        ['plan', 'plan'],
-                        ['build', 'bouw'],
-                    ].map(([value, label]) => (
-                        <div key={value} className="flex items-center gap-2">
-                            <RadioGroupItem
-                                value={value}
-                                id={`until-${value}`}
-                            />
-                            <Label htmlFor={`until-${value}`}>{label}</Label>
-                        </div>
-                    ))}
-                </RadioGroup>
-                <div className="flex items-center gap-2">
-                    <Checkbox
-                        id="keep_worktree"
-                        checked={data.keep_worktree}
-                        onCheckedChange={(checked) =>
-                            setData('keep_worktree', checked === true)
-                        }
-                    />
-                    <Label htmlFor="keep_worktree">worktree bewaren</Label>
-                </div>
             </div>
 
             <div>

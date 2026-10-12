@@ -19,7 +19,6 @@ class RunLiveController extends Controller
     {
         $run->load(['project', 'steps' => fn ($query) => $query->orderBy('id')]);
         $after = $request->integer('after');
-        $showAll = $request->boolean('all');
 
         $events = $run->events()->where('sequence', '>', $after)->orderBy('sequence')->limit(500)->get();
 
@@ -27,7 +26,7 @@ class RunLiveController extends Controller
             'run' => RunResource::make($run)->resolve(),
             'last_sequence' => $events->max('sequence') ?? $after,
             'events' => RunEventResource::collection(
-                $events->reject(fn ($event) => ! $showAll && $formatter->isNoise($event))
+                $events->reject(fn ($event) => $formatter->isNoise($event))
                     ->each->setRelation('run', $run)
                     ->values()
             )->resolve(),

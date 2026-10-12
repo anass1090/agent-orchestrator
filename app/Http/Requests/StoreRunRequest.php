@@ -25,8 +25,6 @@ class StoreRunRequest extends FormRequest
         return [
             'project_id' => ['required', 'exists:projects,id'],
             'prompt' => ['required', 'string', 'min:10'],
-            'until' => ['nullable', 'in:plan,build'],
-            'keep_worktree' => ['boolean'],
         ];
     }
 

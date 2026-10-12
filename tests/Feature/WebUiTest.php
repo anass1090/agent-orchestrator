@@ -74,9 +74,9 @@ it('starts a run in the background and redirects to it', function () {
     $this->mock(BackgroundLauncher::class)
         ->shouldReceive('launch')
         ->once()
-        ->withArgs(fn (Run $run, array $arguments) => $arguments === ['pipeline:run', '--run='.$run->id, '--until=plan']);
+        ->withArgs(fn (Run $run, array $arguments) => $arguments === ['pipeline:run', '--run='.$run->id]);
 
-    $response = $this->post('/runs', ['project_id' => $project->id, 'prompt' => 'Voeg een CSV-export toe', 'until' => 'plan']);
+    $response = $this->post('/runs', ['project_id' => $project->id, 'prompt' => 'Voeg een CSV-export toe']);
 
     $run = Run::sole();
     $response->assertRedirect(route('runs.show', $run));
@@ -108,7 +108,7 @@ it('launches the real detached command', function () {
         && str_ends_with($process->command, '< /dev/null &'));
 });
 
-it('shows a run with its phases, events and rendered plan', function () {
+it('shows a run with its steps, events and rendered plan', function () {
     $run = finishedRun();
 
     $this->get(route('runs.show', $run))
@@ -124,15 +124,13 @@ it('shows a run with its phases, events and rendered plan', function () {
             ->where('lastSequence', 3)
             ->where('documents.0.label', 'Plan')
             ->where('documents.0.html', fn (string $html) => str_contains($html, '<h1>Het plan</h1>') && ! str_contains($html, '<script>'))
-            ->where('files.0.path', 'checks/0-tests.log')
-            ->where('phases', ['setup']));
+            ->where('files.0.path', 'checks/0-tests.log'));
 });
 
-it('shows noise events on request', function () {
+it('always hides noise events', function () {
     $this->get(route('runs.show', [finishedRun(), 'all' => 1]))
         ->assertInertia(fn (Assert $page) => $page
-            ->has('events', 3)
-            ->where('events.1.type', 'system.thinking_tokens'));
+            ->has('events', 2));
 });
 
 it('returns new events and fragments for live polling', function () {
@@ -208,28 +206,6 @@ it('refuses to delete a busy run', function () {
     $this->delete(route('runs.destroy', $run))->assertSessionHas('status');
 
     expect(Run::find($run->id))->not->toBeNull();
-});
-
-it('runs a single phase in the background', function () {
-    $run = finishedRun();
-    $this->mock(BackgroundLauncher::class)
-        ->shouldReceive('launch')->once()
-        ->withArgs(fn (Run $launched, array $arguments) => $arguments === ['pipeline:phase', (string) $run->id, 'setup']);
-
-    $this->post(route('runs.phase', [$run, 'setup']))->assertRedirect();
-
-    expect($run->refresh()->status)->toBe(RunStatus::Pending);
-});
-
-it('refuses to run a phase while the run is busy', function () {
-    $run = Run::factory()->create(['status' => RunStatus::Pending]);
-    $this->mock(BackgroundLauncher::class)->shouldNotReceive('launch');
-
-    $this->post(route('runs.phase', [$run, 'plan']))->assertSessionHas('status');
-});
-
-it('rejects unknown phases', function () {
-    $this->post(route('runs.phase', [finishedRun(), 'deploy']))->assertNotFound();
 });
 
 it('lists projects with their success rate', function () {

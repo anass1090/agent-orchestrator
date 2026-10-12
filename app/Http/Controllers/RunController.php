@@ -47,30 +47,12 @@ class RunController extends Controller
         $run = $pipeline->start(Project::findOrFail($request->integer('project_id')), $request->string('prompt')->trim()->value());
 
         try {
-            $launcher->launch($run, $this->buildLaunchArguments($request, $run));
+            $launcher->launch($run, ['pipeline:run', '--run='.$run->id]);
         } catch (Throwable $e) {
             $run->forceFill(['status' => RunStatus::Error, 'stop_reason' => 'launch_failed', 'error' => $e->getMessage()])->save();
         }
 
         return to_route('runs.show', $run);
-    }
-
-    /**
-     * @return list<string>
-     */
-    protected function buildLaunchArguments(StoreRunRequest $request, Run $run): array
-    {
-        $arguments = ['pipeline:run', '--run='.$run->id];
-
-        if ($request->filled('until')) {
-            $arguments[] = '--until='.$request->string('until');
-        }
-
-        if ($request->boolean('keep_worktree')) {
-            $arguments[] = '--keep-worktree';
-        }
-
-        return $arguments;
     }
 
     /**
@@ -89,13 +71,12 @@ class RunController extends Controller
         return to_route('runs.index')->with('status', 'Run verwijderd.');
     }
 
-    public function show(Request $request, Run $run, EventFormatter $formatter): Response
+    public function show(Run $run, EventFormatter $formatter): Response
     {
         $run->load(['project', 'steps' => fn ($query) => $query->orderBy('id')]);
-        $showAll = $request->boolean('all');
 
         $events = $run->events()->orderBy('sequence')->get()
-            ->reject(fn ($event) => ! $showAll && $formatter->isNoise($event))
+            ->reject(fn ($event) => $formatter->isNoise($event))
             ->each->setRelation('run', $run)
             ->values();
 
@@ -103,28 +84,9 @@ class RunController extends Controller
             'run' => RunResource::make($run)->resolve(),
             'events' => RunEventResource::collection($events)->resolve(),
             'lastSequence' => (int) $run->events()->max('sequence'),
-            'showAll' => $showAll,
-            'phases' => $this->phases($run),
             'documents' => $this->documents($run),
             'files' => $this->files($run),
         ]);
-    }
-
-    /**
-     * The phases that can be run on their own once the run is idle: only setup
-     * until there is a worktree to work in.
-     *
-     * @return list<string>
-     */
-    protected function phases(Run $run): array
-    {
-        if ($run->isBusy()) {
-            return [];
-        }
-
-        return $run->worktree_path && is_dir($run->worktree_path)
-            ? ['plan', 'build', 'checks', 'fixloop', 'finish']
-            : ['setup'];
     }
 
     /**

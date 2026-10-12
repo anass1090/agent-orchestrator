@@ -18,25 +18,14 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import AppLayout from '@/layouts/app-layout';
-import { number, usd } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import {
-    destroy,
-    index,
-    live as liveRoute,
-    phase as phaseRoute,
-    show,
-    stop,
-} from '@/routes/runs';
-import { payload } from '@/routes/runs/events';
+import { destroy, index, live as liveRoute, stop } from '@/routes/runs';
 import type { Run, RunEvent, Step } from '@/types';
 
 type Props = {
     run: Run;
     events: RunEvent[];
     lastSequence: number;
-    showAll: boolean;
-    phases: string[];
     documents: { label: string; html: string }[];
     files: { path: string; url: string }[];
 };
@@ -47,7 +36,7 @@ type Live = { base: RunEvent[]; run: Run; events: RunEvent[] };
 const ALL = 'all';
 
 export default function RunShow(props: Props) {
-    const { showAll, phases, documents, files } = props;
+    const { documents, files } = props;
     const [live, setLive] = useState<Live | null>(null);
     const [activePhase, setActivePhase] = useState<string | null>(null);
 
@@ -70,9 +59,7 @@ export default function RunShow(props: Props) {
         const poll = async () => {
             try {
                 const response = await fetch(
-                    liveRoute.url(props.run.id, {
-                        query: { after, all: showAll ? 1 : 0 },
-                    }),
+                    liveRoute.url(props.run.id, { query: { after } }),
                     { headers: { Accept: 'application/json' } },
                 );
                 const data: {
@@ -127,13 +114,7 @@ export default function RunShow(props: Props) {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [
-        props.run.busy,
-        props.run.id,
-        props.events,
-        props.lastSequence,
-        showAll,
-    ]);
+    }, [props.run.busy, props.run.id, props.events, props.lastSequence]);
 
     const stepPhases = [...new Set(run.steps.map((step) => step.phase))];
     const visible = activePhase
@@ -153,7 +134,7 @@ export default function RunShow(props: Props) {
                 <p className="whitespace-pre-line">{run.prompt}</p>
 
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                    {run.can_stop ? (
+                    {run.can_stop && (
                         <Button
                             variant="destructive"
                             size="sm"
@@ -161,29 +142,6 @@ export default function RunShow(props: Props) {
                         >
                             Run stoppen
                         </Button>
-                    ) : (
-                        phases.length > 0 && (
-                            <>
-                                <span>Fase draaien:</span>
-                                {phases.map((phase) => (
-                                    <Button
-                                        key={phase}
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() =>
-                                            router.post(
-                                                phaseRoute.url({
-                                                    run: run.id,
-                                                    phase,
-                                                }),
-                                            )
-                                        }
-                                    >
-                                        {phase}
-                                    </Button>
-                                ))}
-                            </>
-                        )
                     )}
                     {run.can_delete && (
                         <Button
@@ -231,14 +189,6 @@ export default function RunShow(props: Props) {
                                 ))}
                             </SelectContent>
                         </Select>
-                        <Link
-                            href={show(run.id, {
-                                query: { all: showAll ? 0 : 1 },
-                            })}
-                            className="underline"
-                        >
-                            {showAll ? 'Ruis verbergen' : 'Ook ruis tonen'}
-                        </Link>
                         {run.busy && (
                             <span className="text-blue-700 dark:text-blue-400">
                                 live
@@ -247,11 +197,7 @@ export default function RunShow(props: Props) {
                     </div>
                     <ol className="space-y-px font-mono text-xs">
                         {visible.map((event) => (
-                            <EventItem
-                                key={event.sequence}
-                                runId={run.id}
-                                event={event}
-                            />
+                            <EventItem key={event.sequence} event={event} />
                         ))}
                     </ol>
                 </section>
@@ -380,58 +326,28 @@ const eventTones: Record<string, string> = {
     other: 'text-muted-foreground',
 };
 
-/** One event; its payload loads on first open. */
-function EventItem({ runId, event }: { runId: number; event: RunEvent }) {
-    const [content, setContent] = useState<string | null>(null);
-
-    const load = async (open: boolean) => {
-        if (!open || content !== null) {
-            return;
-        }
-
-        setContent('Laden…');
-
-        try {
-            const response = await fetch(
-                payload.url({ run: runId, event: event.sequence }),
-                { headers: { Accept: 'application/json' } },
-            );
-            setContent(JSON.stringify(await response.json(), null, 2));
-        } catch (error) {
-            setContent(null);
-            console.error('Payload kon niet geladen worden', error);
-        }
-    };
-
+/** One event, as a single readable line. */
+function EventItem({ event }: { event: RunEvent }) {
     const text =
         (event.tool && event.kind !== 'tool-use' ? event.tool + ' ' : '') +
-        (event.summary ?? event.type) +
-        (event.payload_on_disk ? ' (payload op schijf)' : '');
+        (event.summary ?? event.type);
 
     return (
-        <li className={eventTones[event.kind]}>
-            <details
-                onToggle={(e) => void load(e.currentTarget.open)}
-                className="rounded px-1 hover:bg-muted/60"
-            >
-                <summary className="flex cursor-pointer gap-3 py-0.5">
-                    <span
-                        className="shrink-0 text-muted-foreground"
-                        title={event.time}
-                    >
-                        {event.offset}
-                    </span>
-                    <span className="w-14 shrink-0 text-muted-foreground">
-                        {event.phase}
-                    </span>
-                    <span className="break-all whitespace-pre-wrap">
-                        {event.glyph} {text}
-                    </span>
-                </summary>
-                <pre className="my-1 max-h-96 overflow-auto rounded bg-muted p-2 text-foreground">
-                    {content}
-                </pre>
-            </details>
+        <li
+            className={cn(
+                'flex gap-3 rounded px-1 py-0.5',
+                eventTones[event.kind],
+            )}
+        >
+            <span className="shrink-0 text-muted-foreground" title={event.time}>
+                {event.offset}
+            </span>
+            <span className="w-14 shrink-0 text-muted-foreground">
+                {event.phase}
+            </span>
+            <span className="break-all whitespace-pre-wrap">
+                {event.glyph} {text}
+            </span>
         </li>
     );
 }
@@ -445,14 +361,7 @@ function Summary({ run }: { run: Run }) {
                 (run.pushed ? ' (gepusht)' : '') +
                 (run.merged ? ', gemerged' : ''),
         ],
-        ['Model', run.model ?? '–'],
-        ['Fixpogingen', `${run.fix_attempts} / ${run.max_fix_attempts}`],
         ['Duur', run.duration],
-        ['Kosten', usd(run.cost_usd, 4)],
-        [
-            'Tokens in / uit',
-            `${number(run.tokens_in)} / ${number(run.tokens_out)}`,
-        ],
         ['Gestart', run.started_at ?? 'nog niet'],
     ];
 
@@ -492,8 +401,6 @@ function Steps({ steps }: { steps: Step[] }) {
                     <TableHead>Fase</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Duur</TableHead>
-                    <TableHead className="text-right">Exit</TableHead>
-                    <TableHead className="text-right">Kosten</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -513,12 +420,6 @@ function Steps({ steps }: { steps: Step[] }) {
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                             {step.duration}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                            {step.exit_code ?? '–'}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                            {step.cost_usd !== null && usd(step.cost_usd, 4)}
                         </TableCell>
                     </TableRow>
                 ))}
