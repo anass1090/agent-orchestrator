@@ -76,7 +76,7 @@ class RunController extends Controller
         $run->load(['project', 'steps' => fn ($query) => $query->orderBy('id')]);
 
         $events = $run->events()->orderBy('sequence')->get()
-            ->reject(fn ($event) => $formatter->isNoise($event))
+            ->reject(fn ($event) => $formatter->isNoise($event) || $formatter->isVerbose($event))
             ->each->setRelation('run', $run)
             ->values();
 

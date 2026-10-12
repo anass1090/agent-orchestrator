@@ -28,6 +28,24 @@ class EventFormatter
     }
 
     /**
+     * Implementation detail (the pipeline's own setup/git commands, raw Bash
+     * calls and their output, model "thinking") that the simplified run page
+     * hides on top of isNoise(): accurate, but too much plumbing for someone
+     * not reading code. Other tools (Read, Edit, Write, ...) stay visible,
+     * since naming the file they touched reads as a narrative step.
+     */
+    public function isVerbose(RunEvent $event): bool
+    {
+        $kind = $this->kind($event);
+
+        if ($kind === 'command' || $kind === 'thinking') {
+            return true;
+        }
+
+        return in_array($kind, ['tool-use', 'tool-ok'], true) && $event->tool === 'Bash';
+    }
+
+    /**
      * Presentation category of an event, shared by the terminal and the web UI.
      */
     public function kind(RunEvent $event): string

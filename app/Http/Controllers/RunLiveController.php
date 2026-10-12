@@ -26,7 +26,7 @@ class RunLiveController extends Controller
             'run' => RunResource::make($run)->resolve(),
             'last_sequence' => $events->max('sequence') ?? $after,
             'events' => RunEventResource::collection(
-                $events->reject(fn ($event) => $formatter->isNoise($event))
+                $events->reject(fn ($event) => $formatter->isNoise($event) || $formatter->isVerbose($event))
                     ->each->setRelation('run', $run)
                     ->values()
             )->resolve(),

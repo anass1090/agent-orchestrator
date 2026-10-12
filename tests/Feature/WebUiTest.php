@@ -133,6 +133,19 @@ it('always hides noise events', function () {
             ->has('events', 2));
 });
 
+it('hides the pipeline\'s own commands and raw Bash tool calls, but keeps other tools', function () {
+    $run = finishedRun();
+    $run->events()->create(['phase' => Phase::Setup, 'sequence' => 4, 'type' => 'pipeline.command', 'summary' => '$ composer install', 'occurred_at' => now()]);
+    $run->events()->create(['phase' => Phase::Build, 'sequence' => 5, 'type' => 'tool_use', 'tool' => 'Bash', 'summary' => 'ls -la', 'occurred_at' => now()]);
+    $run->events()->create(['phase' => Phase::Build, 'sequence' => 6, 'type' => 'tool_result', 'tool' => 'Bash', 'summary' => 'app/\nroutes/', 'occurred_at' => now()]);
+    $run->events()->create(['phase' => Phase::Build, 'sequence' => 7, 'type' => 'tool_use', 'tool' => 'Write', 'summary' => 'Write app/Models/Invoice.php', 'occurred_at' => now()]);
+
+    $this->get(route('runs.show', $run))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('events', 3)
+            ->where('events.2.summary', 'Write app/Models/Invoice.php'));
+});
+
 it('returns new events and fragments for live polling', function () {
     $run = finishedRun();
 
