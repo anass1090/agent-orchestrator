@@ -344,7 +344,24 @@ Possible fix: widen the deny list to `git reset`, `git rebase`, `git remote`,
 matching), and treat "no credentials reachable" as the real boundary, ideally
 by running the agent as a user without SSH keys or credential helpers.
 
-## 5. Decisions to make
+## 5. Check integrity: nothing stops the agent from weakening its own tests
+
+The only protection against the agent deleting, skipping, or gutting a failing
+test instead of fixing the underlying bug is a line in `build.system.md` and
+`fix.system.md` telling it not to (`resources/prompts/*.system.md`). Nothing
+in the pipeline verifies this mechanically: a check passing after a fix
+attempt could mean the bug was fixed, or that the test which caught it no
+longer does. This gets more likely, not less, the more attempts the fix loop
+has already burned through.
+
+Possible fix: before accepting a `checks` run as passed, diff the test files
+between the previous and new worktree state (or parse `php artisan test`'s own
+counts) and fail/flag the step if the number of test files, tests, or
+assertions drops without a corresponding addition. Doesn't catch a test
+rewritten to assert something weaker, but catches outright deletion or
+skipping, which is the cheaper and more common failure mode.
+
+## 6. Decisions to make
 
 1. **Agent container access**: `pexec` & co. through the runner (recommended)
    vs mounting the socket into the orchestrator and relying on deny rules
@@ -360,3 +377,5 @@ by running the agent as a user without SSH keys or credential helpers.
 6. **Widen the git deny list** now or not.
 7. **Built images**: a fixed image name per project (recommended) vs
    `down -v --rmi local` after every run.
+8. **Enforce check integrity** (test/assertion-count diff) now, or keep
+   relying on the prompt instruction for now and revisit later.
