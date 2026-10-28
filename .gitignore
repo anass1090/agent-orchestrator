@@ -41,4 +41,6 @@ yarn-error.log
 /boost.json
 /opencode.json
 /opencode.jsonc
+.pnpm-store
+
 /.pnpm-store
