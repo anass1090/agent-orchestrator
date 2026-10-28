@@ -5,6 +5,7 @@ use App\Enums\StepStatus;
 use App\Models\GithubConnection;
 use App\Models\Project;
 use App\Models\Run;
+use App\Pipeline\Exceptions\CommandFailed;
 use App\Pipeline\Worktree;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -79,6 +80,31 @@ it('never records the token in the push event', function () {
         expect($event->summary)->not->toContain('gho_supersecrettoken');
         expect(json_encode($event->payload))->not->toContain('gho_supersecrettoken');
     }
+});
+
+it('disconnects the github connection when the push itself fails with an auth error', function () {
+    Process::fake([
+        '*remote get-url*' => Process::result(),
+        '*push*' => Process::result(errorOutput: "remote: Invalid username or password.\nfatal: Authentication failed for 'https://github.com/octocat/demo.git/'", exitCode: 128),
+    ]);
+
+    app(Worktree::class)->push($this->run, $this->step);
+})->throws(CommandFailed::class, 'GitHub-token is ongeldig of ingetrokken; opnieuw verbinden via Connections.');
+
+it('fails the push normally, without disconnecting, for an unrelated git failure', function () {
+    Process::fake([
+        '*remote get-url*' => Process::result(),
+        '*push*' => Process::result(errorOutput: 'fatal: remote end hung up unexpectedly', exitCode: 128),
+    ]);
+
+    try {
+        app(Worktree::class)->push($this->run, $this->step);
+        $this->fail('Expected a CommandFailed exception.');
+    } catch (CommandFailed $e) {
+        expect($e->getMessage())->not->toContain('ongeldig of ingetrokken');
+    }
+
+    expect(GithubConnection::current()?->connected())->toBeTrue();
 });
 
 it('pushes to the named remote without a token for projects not sourced from github', function () {

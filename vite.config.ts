@@ -9,6 +9,13 @@ import { defineConfig, lazyPlugins } from 'vite-plus';
 
 const vitePort = Number(process.env.VITE_PORT ?? 9456);
 
+// Which host gets written into public/hot (every asset tag on the page
+// resolves against this). Defaults to localhost for normal PC browsing; set
+// VITE_HMR_HOST to a Tailscale IP and restart vite-server to browse from
+// another device instead - the two don't work at the same time, since a
+// machine generally can't reach its own Tailscale/public IP (NAT hairpin).
+const hmrHost = process.env.VITE_HMR_HOST ?? 'localhost';
+
 export default defineConfig({
     plugins: lazyPlugins(() => [
         laravel({
@@ -34,9 +41,19 @@ export default defineConfig({
         host: '0.0.0.0',
         port: vitePort,
         strictPort: true,
+        // laravel-vite-plugin writes this host into public/hot, which is
+        // what every asset <script>/<link> tag on the page resolves against
+        // - not just the HMR socket. It can't be "0.0.0.0" (not a connectable
+        // address) or left unset (falls back to the literal server.host
+        // value, i.e. "0.0.0.0" again).
         hmr: {
-            host: 'localhost',
+            host: hmrHost,
+            clientPort: vitePort,
         },
+        // Keep Vite's Host-header allowlist on (avoids DNS rebinding), just
+        // extended with this machine's Tailscale IP so other tailnet devices
+        // can reach the dev server too.
+        allowedHosts: ['localhost', '127.0.0.1', '100.73.207.63'],
         watch: {
             ignored: [
                 '**/.agents/**',

@@ -25,7 +25,7 @@ export default function AppLayout({
                     Projecten
                 </Link>
                 <Link href={connections()} className="hover:underline">
-                    Connections
+                    Connecties
                 </Link>
             </header>
 

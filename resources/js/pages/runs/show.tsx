@@ -3,13 +3,6 @@ import { useEffect, useState } from 'react';
 import StatusBadge from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import {
     Table,
     TableBody,
     TableCell,
@@ -29,22 +22,13 @@ type Props = {
     files: { path: string; url: string }[];
 };
 
-/** Events and run state fetched since the page props were loaded. */
-type Live = { base: RunEvent[]; run: Run; events: RunEvent[] };
-
-const ALL = 'all';
-
 export default function RunShow(props: Props) {
     const { files } = props;
-    const [live, setLive] = useState<Live | null>(null);
-    const [activePhase, setActivePhase] = useState<string | null>(null);
+    const [run, setRun] = useState(props.run);
 
-    // Live state only applies to the props it was fetched on top of.
-    const current = live?.base === props.events ? live : null;
-    const run = current?.run ?? props.run;
-    const events = current
-        ? [...props.events, ...current.events]
-        : props.events;
+    useEffect(() => {
+        setRun(props.run);
+    }, [props.run]);
 
     useEffect(() => {
         if (!props.run.busy) {
@@ -71,26 +55,8 @@ export default function RunShow(props: Props) {
                     return;
                 }
 
-                const follow =
-                    window.innerHeight + window.scrollY >=
-                    document.body.scrollHeight - 120;
                 after = data.last_sequence;
-                setLive((previous) => ({
-                    base: props.events,
-                    run: data.run,
-                    events: [
-                        ...(previous?.base === props.events
-                            ? previous.events
-                            : []),
-                        ...data.events,
-                    ],
-                }));
-
-                if (follow && data.events.length > 0) {
-                    requestAnimationFrame(() =>
-                        window.scrollTo({ top: document.body.scrollHeight }),
-                    );
-                }
+                setRun(data.run);
 
                 if (!data.run.busy) {
                     // Finished: reload once for plan, files and phase actions.
@@ -113,12 +79,7 @@ export default function RunShow(props: Props) {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [props.run.busy, props.run.id, props.events, props.lastSequence]);
-
-    const stepPhases = [...new Set(run.steps.map((step) => step.phase))];
-    const visible = activePhase
-        ? events.filter((event) => event.phase === activePhase)
-        : events;
+    }, [props.run.busy, props.run.id, props.lastSequence]);
 
     return (
         <AppLayout title={`Run #${run.id}`}>
@@ -133,6 +94,11 @@ export default function RunShow(props: Props) {
                 <p className="whitespace-pre-line">{run.prompt}</p>
 
                 <div className="flex flex-wrap items-center gap-2 text-sm">
+                    {run.busy && (
+                        <span className="text-blue-700 dark:text-blue-400">
+                            live
+                        </span>
+                    )}
                     {run.can_stop && (
                         <Button
                             variant="destructive"
@@ -158,78 +124,38 @@ export default function RunShow(props: Props) {
                 </div>
             </div>
 
-            <PhaseStrip
-                steps={run.steps}
-                active={activePhase}
-                onSelect={(phase) =>
-                    setActivePhase(activePhase === phase ? null : phase)
-                }
-            />
+            <PhaseStrip steps={run.steps} />
 
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                <section className="space-y-3">
-                    <h2 className="text-xl font-semibold">Events</h2>
-                    <div className="flex items-center gap-4 text-sm">
-                        <Select
-                            value={activePhase ?? ALL}
-                            onValueChange={(value) =>
-                                setActivePhase(value === ALL ? null : value)
-                            }
-                        >
-                            <SelectTrigger size="sm">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={ALL}>Alle fases</SelectItem>
-                                {stepPhases.map((phase) => (
-                                    <SelectItem key={phase} value={phase}>
-                                        {phase}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {run.busy && (
-                            <span className="text-blue-700 dark:text-blue-400">
-                                live
-                            </span>
-                        )}
-                    </div>
-                    <ol className="space-y-px font-mono text-xs">
-                        {visible.map((event) => (
-                            <EventItem key={event.sequence} event={event} />
-                        ))}
-                    </ol>
-                </section>
-
-                <aside className="space-y-3">
+            <div className="flex flex-wrap gap-8">
+                <section className="min-w-60 flex-1 space-y-3">
                     <h2 className="text-xl font-semibold">Samenvatting</h2>
                     <Summary run={run} />
+                </section>
 
-                    <h2 className="pt-3 text-xl font-semibold">Fases</h2>
+                <section className="min-w-60 flex-1 space-y-3">
+                    <h2 className="text-xl font-semibold">Fases</h2>
                     <Steps steps={run.steps} />
+                </section>
 
-                    {files.length > 0 && (
-                        <>
-                            <h2 className="pt-3 text-xl font-semibold">
-                                Bestanden
-                            </h2>
-                            <ul className="space-y-1">
-                                {files.map((file) => (
-                                    <li key={file.path}>
-                                        <a
-                                            href={file.url}
-                                            target="_blank"
-                                            rel="noopener"
-                                            className="font-mono text-xs underline"
-                                        >
-                                            {file.path}
-                                        </a>
-                                    </li>
-                                ))}
-                            </ul>
-                        </>
-                    )}
-                </aside>
+                {files.length > 0 && (
+                    <section className="min-w-60 flex-1 space-y-3">
+                        <h2 className="text-xl font-semibold">Bestanden</h2>
+                        <ul className="space-y-1">
+                            {files.map((file) => (
+                                <li key={file.path}>
+                                    <a
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noopener"
+                                        className="font-mono text-xs underline"
+                                    >
+                                        {file.path}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
             </div>
         </AppLayout>
     );
@@ -244,15 +170,7 @@ const stepTones: Record<string, string> = {
 };
 
 /** Each phase attempt as wide as it took; colour is its outcome. */
-function PhaseStrip({
-    steps,
-    active,
-    onSelect,
-}: {
-    steps: Step[];
-    active: string | null;
-    onSelect: (phase: string) => void;
-}) {
+function PhaseStrip({ steps }: { steps: Step[] }) {
     if (steps.length === 0) {
         return null;
     }
@@ -260,7 +178,7 @@ function PhaseStrip({
     return (
         <div
             role="group"
-            aria-label="Fases, klik om de events te filteren"
+            aria-label="Fases"
             className="flex h-10 gap-px overflow-hidden rounded-md"
         >
             {steps.map((step) => {
@@ -268,12 +186,9 @@ function PhaseStrip({
                     step.phase + (step.attempt > 0 ? ` ${step.attempt}` : '');
 
                 return (
-                    <button
+                    <div
                         key={step.id}
-                        type="button"
-                        aria-pressed={active === step.phase}
                         title={`${label} · ${step.status} · ${step.duration}`}
-                        onClick={() => onSelect(step.phase)}
                         style={{
                             flexGrow: Math.max(
                                 1,
@@ -283,56 +198,14 @@ function PhaseStrip({
                         className={cn(
                             'flex min-w-12 basis-0 flex-col items-start justify-center overflow-hidden px-2 text-left text-xs leading-tight whitespace-nowrap text-white',
                             stepTones[step.status],
-                            active && active !== step.phase && 'opacity-40',
                         )}
                     >
                         <span>{label}</span>
                         <span className="opacity-80">{step.duration}</span>
-                    </button>
+                    </div>
                 );
             })}
         </div>
-    );
-}
-
-const eventTones: Record<string, string> = {
-    phase: 'font-semibold text-fuchsia-700 dark:text-fuchsia-400',
-    error: 'text-red-700 dark:text-red-400',
-    'check-failed': 'text-red-700 dark:text-red-400',
-    'tool-error': 'text-red-700 dark:text-red-400',
-    'result-error': 'text-red-700 dark:text-red-400',
-    'check-passed': 'text-green-700 dark:text-green-400',
-    'result-ok': 'text-green-700 dark:text-green-400',
-    warning: 'text-amber-700 dark:text-amber-400',
-    command: 'text-muted-foreground',
-    'tool-ok': 'text-muted-foreground',
-    thinking: 'text-muted-foreground',
-    other: 'text-muted-foreground',
-};
-
-/** One event, as a single readable line. */
-function EventItem({ event }: { event: RunEvent }) {
-    const text =
-        (event.tool && event.kind !== 'tool-use' ? event.tool + ' ' : '') +
-        (event.summary ?? event.type);
-
-    return (
-        <li
-            className={cn(
-                'flex gap-3 rounded px-1 py-0.5',
-                eventTones[event.kind],
-            )}
-        >
-            <span className="shrink-0 text-muted-foreground" title={event.time}>
-                {event.offset}
-            </span>
-            <span className="w-14 shrink-0 text-muted-foreground">
-                {event.phase}
-            </span>
-            <span className="break-all whitespace-pre-wrap">
-                {event.glyph} {text}
-            </span>
-        </li>
     );
 }
 

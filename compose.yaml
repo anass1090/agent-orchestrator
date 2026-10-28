@@ -1,5 +1,5 @@
 services:
-    pipeline:
+    laravel.test:
         build:
             context: './docker/8.5'
             dockerfile: Dockerfile
@@ -35,6 +35,7 @@ services:
         environment:
             WWWUSER: '${WWWUSER}'
             VITE_PORT: '${VITE_PORT:-9456}'
+            VITE_HMR_HOST: '${VITE_HMR_HOST:-localhost}'
         volumes:
             - '.:/var/www/html'
         networks:

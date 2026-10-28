@@ -8,12 +8,25 @@ const tones: Record<string, string> = {
     succeeded: 'border-green-600 text-green-700 dark:text-green-400',
     failed: 'border-red-600 text-red-700 dark:text-red-400',
     error: 'border-purple-600 text-purple-700 dark:text-purple-400',
+    aborted: 'border-red-600 text-red-700 dark:text-red-400',
+    skipped: 'border-muted-foreground text-muted-foreground',
+};
+
+const labels: Record<string, string> = {
+    pending: 'wachtend',
+    paused: 'gepauzeerd',
+    running: 'loopt',
+    succeeded: 'geslaagd',
+    failed: 'mislukt',
+    error: 'fout',
+    aborted: 'afgebroken',
+    skipped: 'overgeslagen',
 };
 
 export default function StatusBadge({ status }: { status: string }) {
     return (
         <Badge variant="outline" className={cn(tones[status])}>
-            {status}
+            {labels[status] ?? status}
         </Badge>
     );
 }

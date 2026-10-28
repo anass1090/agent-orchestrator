@@ -2,9 +2,12 @@
 
 namespace App\Pipeline;
 
+use App\GitHub\GithubRepositoryClient;
 use App\Models\GithubConnection;
 use App\Models\Run;
 use App\Models\RunStep;
+use App\Pipeline\Exceptions\CommandFailed;
+use App\Pipeline\Exceptions\PhaseFailed;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -23,7 +26,34 @@ class Worktree
     public function __construct(
         protected Shell $shell,
         protected SubprocessEnvironment $environment,
+        protected GithubRepositoryClient $github,
     ) {}
+
+    /**
+     * Fails the run immediately, before any worktree or agent work, instead
+     * of only discovering a revoked/expired GitHub token at the push step
+     * after plan/build/checks already ran: the fetch during setup is
+     * best-effort and silently falls back to the local branch on failure, so
+     * it never surfaces a dead token on its own.
+     */
+    public function ensureGithubAccessIsValid(Run $run): void
+    {
+        if ($run->project->github_full_name === null) {
+            return;
+        }
+
+        $connection = GithubConnection::current();
+
+        if (! $connection?->connected()) {
+            throw new PhaseFailed('GitHub is niet verbonden.', 'github_not_connected');
+        }
+
+        if (! $this->github->verify((string) $connection->access_token)) {
+            $connection->disconnect();
+
+            throw new PhaseFailed('GitHub-token is ongeldig of ingetrokken; opnieuw verbinden via Connections.', 'github_token_invalid');
+        }
+    }
 
     public function pathFor(Run $run): string
     {
@@ -379,18 +409,49 @@ class Worktree
      * Shell::runRedacted(), not run(): the credential travels as a command
      * argument, which run() would otherwise log in full as a visible
      * pipeline.command event.
+     *
+     * mustSucceed is false here so a revoked/expired token can be told apart
+     * from any other push failure: git's own stderr (never the command
+     * itself, so the token stays out of it) says so plainly, and when it
+     * does the stored connection is disconnected so the next GitHub action
+     * in the app surfaces "not connected" instead of every future run
+     * failing the same push with an unexplained exit code.
      */
     protected function pushWithToken(Run $run, RunStep $step, string $branch, string $token): void
     {
         $url = $this->githubUrl($run);
 
-        $this->shell->runRedacted(
+        $result = $this->shell->runRedacted(
             $run,
             $step,
             ['git', ...$this->tokenFlags($url, $token), 'push', '--set-upstream', $url, $branch],
             "git push --set-upstream {$url} {$branch}",
             $run->project->path,
+            mustSucceed: false,
         );
+
+        if ($result->successful()) {
+            return;
+        }
+
+        if ($this->looksLikeAuthFailure($result->errorOutput())) {
+            GithubConnection::current()?->disconnect();
+
+            throw new CommandFailed('GitHub-token is ongeldig of ingetrokken; opnieuw verbinden via Connections.');
+        }
+
+        throw new CommandFailed(sprintf('`git push --set-upstream %s %s` failed with exit %d', $url, $branch, $result->exitCode() ?? -1));
+    }
+
+    /**
+     * Git's own wording for a rejected HTTP credential, checked against
+     * stderr only - never the command itself, which still carries the token.
+     */
+    protected function looksLikeAuthFailure(string $errorOutput): bool
+    {
+        return str_contains($errorOutput, 'Authentication failed')
+            || str_contains($errorOutput, 'Invalid username or password')
+            || str_contains($errorOutput, 'Bad credentials');
     }
 
     /**

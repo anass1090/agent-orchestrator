@@ -23,4 +23,14 @@ class GithubRepositoryClient
             ->throw()
             ->json();
     }
+
+    /**
+     * Whether this token is still accepted by GitHub, i.e. not revoked or
+     * expired on its side. Anything other than a 401 counts as valid here,
+     * so a transient GitHub/network hiccup never blocks a run on its own.
+     */
+    public function verify(string $token): bool
+    {
+        return Http::withToken($token)->get('https://api.github.com/user')->status() !== 401;
+    }
 }

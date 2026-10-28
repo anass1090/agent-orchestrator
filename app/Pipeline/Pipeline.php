@@ -115,6 +115,8 @@ class Pipeline
     public function setup(Run $run): void
     {
         $this->step($run, Phase::Setup, 0, function (RunStep $step) use ($run) {
+            $this->worktree->ensureGithubAccessIsValid($run);
+
             if ($run->worktree_path === null || ! is_dir($run->worktree_path)) {
                 $this->worktree->create($run, $step);
             }
